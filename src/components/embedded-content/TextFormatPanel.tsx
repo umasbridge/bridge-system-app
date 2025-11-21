@@ -1,0 +1,230 @@
+import { useState } from 'react';
+import { X, Bold, Italic, Underline, Strikethrough, Highlighter } from 'lucide-react';
+import { Button } from '../ui/button';
+import { Label } from '../ui/label';
+
+interface TextFormatPanelProps {
+  position: { x: number; y: number };
+  selectedText: string;
+  selectionRange: { start: number; end: number };
+  onClose: () => void;
+  onApply: (format: TextFormat) => void;
+}
+
+export interface TextFormat {
+  color?: string;
+  backgroundColor?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+}
+
+const COLORS = [
+  '#000000', '#DC2626', '#EA580C', '#D97706', '#65A30D',
+  '#059669', '#0891B2', '#2563EB', '#7C3AED', '#C026D3'
+];
+
+const FONTS = [
+  'Arial',
+  'Times New Roman',
+  'Courier New',
+  'Georgia',
+  'Verdana',
+  'Comic Sans MS',
+  'Trebuchet MS',
+  'Impact'
+];
+
+const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
+
+export function TextFormatPanel({ position, selectedText, selectionRange, onClose, onApply }: TextFormatPanelProps) {
+  const [format, setFormat] = useState<TextFormat>({
+    color: '#000000',
+    backgroundColor: 'transparent',
+    fontFamily: 'Arial',
+    fontSize: 14,
+    bold: false,
+    italic: false,
+    underline: false,
+    strikethrough: false
+  });
+
+  const handleApply = () => {
+    onApply(format);
+  };
+
+  return (
+    <div
+      data-text-format-panel
+      className="fixed z-[60] bg-white rounded-lg shadow-2xl border border-gray-200 p-4"
+      style={{
+        left: position.x + 20,
+        top: position.y - 10,
+        width: '320px'
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => {
+        // Only prevent default on non-input elements to allow typing
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT') {
+          e.preventDefault();
+        }
+        e.stopPropagation();
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="font-medium">Text Format</h3>
+          {selectedText && (
+            <p className="text-xs text-gray-500 mt-1 truncate max-w-[200px]">
+              "{selectedText}"
+            </p>
+          )}
+        </div>
+        <Button
+          onClick={onClose}
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Font Family */}
+      <div className="mb-3">
+        <Label className="text-xs mb-1 block">Font</Label>
+        <select
+          value={format.fontFamily}
+          onChange={(e) => setFormat({ ...format, fontFamily: e.target.value })}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+        >
+          {FONTS.map(font => (
+            <option key={font} value={font}>{font}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Font Size */}
+      <div className="mb-3">
+        <Label className="text-xs mb-1 block">Size</Label>
+        <select
+          value={format.fontSize}
+          onChange={(e) => setFormat({ ...format, fontSize: parseInt(e.target.value) })}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+        >
+          {FONT_SIZES.map(size => (
+            <option key={size} value={size}>{size}px</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Style Buttons */}
+      <div className="mb-3">
+        <Label className="text-xs mb-1 block">Style</Label>
+        <div className="grid grid-cols-4 gap-1">
+          <Button
+            onClick={() => setFormat({ ...format, bold: !format.bold })}
+            variant={format.bold ? "default" : "outline"}
+            size="sm"
+          >
+            <Bold className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={() => setFormat({ ...format, italic: !format.italic })}
+            variant={format.italic ? "default" : "outline"}
+            size="sm"
+          >
+            <Italic className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={() => setFormat({ ...format, underline: !format.underline })}
+            variant={format.underline ? "default" : "outline"}
+            size="sm"
+          >
+            <Underline className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={() => setFormat({ ...format, strikethrough: !format.strikethrough })}
+            variant={format.strikethrough ? "default" : "outline"}
+            size="sm"
+          >
+            <Strikethrough className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Text Color */}
+      <div className="mb-3">
+        <Label className="text-xs mb-1 block">Text Color</Label>
+        <div className="grid grid-cols-5 gap-1">
+          {COLORS.map(color => (
+            <button
+              key={color}
+              onClick={() => setFormat({ ...format, color })}
+              className="w-8 h-8 rounded border-2 transition-all"
+              style={{
+                backgroundColor: color,
+                borderColor: format.color === color ? '#3B82F6' : '#D1D5DB'
+              }}
+            />
+          ))}
+        </div>
+        <div className="flex items-center gap-2 mt-2">
+          <input
+            type="color"
+            value={format.color}
+            onChange={(e) => setFormat({ ...format, color: e.target.value })}
+            className="w-8 h-8 rounded cursor-pointer"
+          />
+          <input
+            type="text"
+            value={format.color}
+            onChange={(e) => setFormat({ ...format, color: e.target.value })}
+            className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded"
+            placeholder="#000000"
+          />
+        </div>
+      </div>
+
+      {/* Highlight Color */}
+      <div className="mb-4">
+        <Label className="text-xs mb-1 flex items-center gap-1">
+          <Highlighter className="h-3 w-3" />
+          Highlight
+        </Label>
+        <div className="grid grid-cols-5 gap-1">
+          <button
+            onClick={() => setFormat({ ...format, backgroundColor: 'transparent' })}
+            className="w-8 h-8 rounded border-2 transition-all bg-white"
+            style={{
+              borderColor: format.backgroundColor === 'transparent' ? '#3B82F6' : '#D1D5DB'
+            }}
+          >
+            <div className="w-full h-full flex items-center justify-center text-xs">×</div>
+          </button>
+          {COLORS.slice(1).map(color => (
+            <button
+              key={color}
+              onClick={() => setFormat({ ...format, backgroundColor: color + '40' })}
+              className="w-8 h-8 rounded border-2 transition-all"
+              style={{
+                backgroundColor: color + '40',
+                borderColor: format.backgroundColor === color + '40' ? '#3B82F6' : '#D1D5DB'
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Apply Button */}
+      <Button onClick={handleApply} className="w-full">
+        Apply Format
+      </Button>
+    </div>
+  );
+}
