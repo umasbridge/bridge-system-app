@@ -148,6 +148,66 @@ export function TextElementComponent({
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    // Check if clipboard contains image files
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+
+      if (item.type.indexOf('image') !== -1) {
+        e.preventDefault(); // Prevent default paste behavior for images
+
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        // Convert image to base64 data URL
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const dataUrl = event.target?.result as string;
+
+          // Insert image as data URL
+          if (contentEditableRef.current) {
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.alt = file.name;
+
+            // Insert at cursor position
+            const selection = window.getSelection();
+            if (selection && selection.rangeCount > 0) {
+              const range = selection.getRangeAt(0);
+              range.deleteContents();
+              range.insertNode(img);
+
+              // Move cursor after image
+              range.setStartAfter(img);
+              range.setEndAfter(img);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            } else {
+              // Fallback: append to end
+              contentEditableRef.current.appendChild(img);
+            }
+
+            // Update content
+            const htmlContent = contentEditableRef.current.innerHTML;
+            const textContent = contentEditableRef.current.textContent || '';
+            onUpdate({
+              content: textContent,
+              htmlContent: htmlContent
+            });
+          }
+        };
+        reader.readAsDataURL(file);
+
+        return; // Only handle first image
+      }
+    }
+  };
+
   const handleFocus = () => {
     // When clicking inside to type, we're entering "edit mode"
     // The parent will handle clearing selection
@@ -196,8 +256,25 @@ export function TextElementComponent({
       // Calculate position for the floating buttons
       const range = selection.getRangeAt(0);
       const rect = range.getBoundingClientRect();
+
+      // Calculate horizontal position with viewport boundary detection
+      // Buttons are ~200px wide total (Format + Hyperlink + gap)
+      // With translateX(-50%), they extend ~100px left and right from center
+      let x = rect.left + (rect.width / 2);
+      const buttonHalfWidth = 100; // Approximate half-width of button group
+      const edgeBuffer = 10; // Minimum distance from viewport edge
+
+      // Ensure buttons don't go off left edge
+      if (x - buttonHalfWidth < edgeBuffer) {
+        x = buttonHalfWidth + edgeBuffer;
+      }
+      // Ensure buttons don't go off right edge
+      if (x + buttonHalfWidth > window.innerWidth - edgeBuffer) {
+        x = window.innerWidth - buttonHalfWidth - edgeBuffer;
+      }
+
       setSelectionPosition({
-        x: rect.left + (rect.width / 2),
+        x: x,
         y: rect.top - 50
       });
     } else {
@@ -349,7 +426,8 @@ export function TextElementComponent({
                                  format.underline || format.strikethrough;
 
     // Handle text alignment separately as it applies to block-level elements
-    if (format.textAlign && !hasInlineFormatting) {
+    // textAlign works independently of inline formatting
+    if (format.textAlign) {
       const range = workingRange;
       let node = range.startContainer;
       
@@ -520,6 +598,7 @@ export function TextElementComponent({
             onInput={handleInput}
             onMouseDown={handleMouseDown}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             onFocus={handleFocus}
             onBlur={handleBlur}
             onMouseUp={handleTextSelect}
