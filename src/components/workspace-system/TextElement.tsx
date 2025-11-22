@@ -46,6 +46,9 @@ export function TextElementComponent({
   const isInternalUpdate = useRef(false);
   const [isEditMode, setIsEditMode] = useState(false); // Track if we're in edit mode
   const [minResizeHeight, setMinResizeHeight] = useState(34); // Default minimum height
+  const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
+  const [imageResizing, setImageResizing] = useState(false);
+  const imageResizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
 
   // Initialize content on mount
   useEffect(() => {
@@ -171,8 +174,9 @@ export function TextElementComponent({
           if (contentEditableRef.current) {
             const img = document.createElement('img');
             img.src = dataUrl;
-            img.style.maxWidth = '100%';
-            img.style.height = 'auto';
+            img.style.width = '300px'; // Default initial width
+            img.style.display = 'block';
+            img.style.margin = '8px 0';
             img.alt = file.name;
 
             // Insert at cursor position
@@ -208,10 +212,106 @@ export function TextElementComponent({
     }
   };
 
+  // Handle image click for selection
+  const handleImageClick = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'IMG') {
+      e.stopPropagation();
+      setSelectedImage(target as HTMLImageElement);
+      // Clear text selection when selecting image
+      setHasTextSelection(false);
+    }
+  };
+
+  // Attach click listeners to images
+  useEffect(() => {
+    if (!contentEditableRef.current) return;
+
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'IMG') {
+        handleImageClick(e);
+      } else {
+        // Click outside image, deselect
+        setSelectedImage(null);
+      }
+    };
+
+    const div = contentEditableRef.current;
+    div.addEventListener('click', handleClick);
+
+    return () => {
+      div.removeEventListener('click', handleClick);
+    };
+  }, []);
+
+  // Image resize handlers
+  const handleImageResizeStart = (e: React.MouseEvent, corner: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!selectedImage) return;
+
+    setImageResizing(true);
+    imageResizeStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: selectedImage.offsetWidth,
+      height: selectedImage.offsetHeight
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!selectedImage) return;
+
+      const deltaX = moveEvent.clientX - imageResizeStart.current.x;
+      const deltaY = moveEvent.clientY - imageResizeStart.current.y;
+
+      // Calculate new dimensions based on corner
+      let newWidth = imageResizeStart.current.width;
+      let newHeight = imageResizeStart.current.height;
+
+      if (corner.includes('e')) {
+        newWidth = Math.max(50, imageResizeStart.current.width + deltaX);
+      }
+      if (corner.includes('s')) {
+        newHeight = Math.max(50, imageResizeStart.current.height + deltaY);
+      }
+
+      // Maintain aspect ratio
+      const aspectRatio = imageResizeStart.current.width / imageResizeStart.current.height;
+      if (corner === 'se' || corner === 'sw' || corner === 'ne' || corner === 'nw') {
+        newHeight = newWidth / aspectRatio;
+      }
+
+      selectedImage.style.width = `${newWidth}px`;
+      selectedImage.style.height = `${newHeight}px`;
+    };
+
+    const handleMouseUp = () => {
+      setImageResizing(false);
+
+      // Save updated content
+      if (contentEditableRef.current) {
+        const htmlContent = contentEditableRef.current.innerHTML;
+        const textContent = contentEditableRef.current.textContent || '';
+        onUpdate({
+          content: textContent,
+          htmlContent: htmlContent
+        });
+      }
+
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   const handleFocus = () => {
     // When clicking inside to type, we're entering "edit mode"
     // The parent will handle clearing selection
-    
+
     // Notify parent that this element is focused and pass the applyFormat function
     if (onFocusChange) {
       onFocusChange(true, applyFormat);
@@ -693,6 +793,73 @@ export function TextElementComponent({
           onUpdate={onUpdate}
           onDelete={onDelete}
         />
+      )}
+
+      {/* Image Resize Handles */}
+      {selectedImage && (
+        <div
+          className="fixed z-50 pointer-events-none"
+          style={{
+            left: selectedImage.getBoundingClientRect().left,
+            top: selectedImage.getBoundingClientRect().top,
+            width: selectedImage.offsetWidth,
+            height: selectedImage.offsetHeight,
+            border: '2px solid #3b82f6',
+            boxSizing: 'border-box'
+          }}
+        >
+          {/* Southeast corner handle */}
+          <div
+            className="absolute bg-blue-500 cursor-se-resize pointer-events-auto"
+            style={{
+              width: '8px',
+              height: '8px',
+              bottom: '-4px',
+              right: '-4px',
+              border: '1px solid white'
+            }}
+            onMouseDown={(e) => handleImageResizeStart(e, 'se')}
+          />
+
+          {/* Southwest corner handle */}
+          <div
+            className="absolute bg-blue-500 cursor-sw-resize pointer-events-auto"
+            style={{
+              width: '8px',
+              height: '8px',
+              bottom: '-4px',
+              left: '-4px',
+              border: '1px solid white'
+            }}
+            onMouseDown={(e) => handleImageResizeStart(e, 'sw')}
+          />
+
+          {/* Northeast corner handle */}
+          <div
+            className="absolute bg-blue-500 cursor-ne-resize pointer-events-auto"
+            style={{
+              width: '8px',
+              height: '8px',
+              top: '-4px',
+              right: '-4px',
+              border: '1px solid white'
+            }}
+            onMouseDown={(e) => handleImageResizeStart(e, 'ne')}
+          />
+
+          {/* Northwest corner handle */}
+          <div
+            className="absolute bg-blue-500 cursor-nw-resize pointer-events-auto"
+            style={{
+              width: '8px',
+              height: '8px',
+              top: '-4px',
+              left: '-4px',
+              border: '1px solid white'
+            }}
+            onMouseDown={(e) => handleImageResizeStart(e, 'nw')}
+          />
+        </div>
       )}
     </>
   );
