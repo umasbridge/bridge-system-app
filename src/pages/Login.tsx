@@ -2,6 +2,7 @@ import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { auth } from '../lib/mockAuth';
+import logoImage from '../assets/logo.png';
 
 export function Login() {
   const navigate = useNavigate();
@@ -35,10 +36,7 @@ export function Login() {
           {/* Logo/Brand */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 mb-4">
-              {/* Placeholder for logo - replace with actual Bridge logo */}
-              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
-                BS
-              </div>
+              <img src={logoImage} alt="Bridge System" className="w-16 h-16" />
             </div>
             <h2 className="text-2xl font-medium text-neutral-900 mb-2">Welcome Back</h2>
             <p className="text-neutral-600">Sign in to your Bridge System account</p>
@@ -117,7 +115,7 @@ export function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="w-full pl-10 pr-3 py-2 border border-neutral-300 rounded focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  className="w-full pl-11 pr-3 py-2 border border-neutral-300 rounded focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   required
                   disabled={isLoading}
                 />
@@ -136,7 +134,7 @@ export function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-2 border border-neutral-300 rounded focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  className="w-full pl-11 pr-12 py-2 border border-neutral-300 rounded focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   required
                   disabled={isLoading}
                 />
