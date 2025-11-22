@@ -1,59 +1,66 @@
 # Bridge System App - Session Handover
 
 ## Session Metadata
-- Date: 2025-11-22 01:20 IST
-- Duration: 1.5 hours
-- Thread Context: 92K tokens used (continued from previous 123K thread)
+- Date: 2025-11-22 15:00 IST
+- Duration: ~2 hours
+- Thread Context: 77K tokens used
+- Branch: feature/auth-dashboard (4 commits, not merged)
 
 ## Current Status
-All persistence bugs FIXED. Column widths persist correctly. Split-view in 50/50 layout with Close button on split-view workspace. Trial-and-error mode for UI refinement.
+Auth infrastructure COMPLETE on branch feature/auth-dashboard. Login/Signup/Reset pages built, React Router with protected routes working. BLOCKER: Visual QA required - login form spans full desktop width (max-width not applied correctly).
 
-## Exact Position on MVP Plan
-- ✅ Task 1: Fix text formatting bug - COMPLETED
-- ✅ Task 2: Add collapse/expand to SystemsTable - COMPLETED
-- ✅ Task 3: Implement IndexedDB persistence - COMPLETED
-- ✅ Task 3a: Fix SystemsTable row persistence bug - COMPLETED
-- ✅ Task 3b: Fix hyperlink context conflict bug - COMPLETED
-- ✅ Task 3c: Fix hyperlink onclick handler persistence bug - COMPLETED
-- ✅ Task 3d: Fix column width persistence bug - COMPLETED
-- ⏭️ Next: UI trial-and-error phase (split-view positioning), then templates
+## Exact Position on AUTH_DASHBOARD_INSTRUCTIONS.md
+- ✅ Phase 1: Design token extraction (COMPLETE)
+- ✅ Phase 2: Routing setup (COMPLETE)
+- ✅ Phase 3: Auth screens (COMPLETE - Login, Signup, Reset Password)
+- ⏸️ Phase 4: Dashboard - STOPPED at minimal placeholder
+- ⏭️ Next: Chrome DevTools visual QA → fix layout bugs → build full Dashboard
 
 ## Critical Context
 
-1. **Git workflow for UI experiments** - User wants to try different visual approaches quickly. Commit working state before each UI change. Can easily revert (git log + git revert). Current: 50/50 split-view (may change to cell-aligned or other).
+1. **LAYOUT BUG**: Login form max-width constraint not working - fields span entire desktop width. User observed this but I didn't verify with Chrome DevTools (user criticism: "wallowing in blindness"). Must inspect actual rendering before continuing.
 
-2. **Split-view positioning history** - Initially at cell right edge, user clarified should be 50/50 split. Committed cell-aligned version (852ce14), then reverted. May go back and forth as user tests visual appeal.
+2. **No backend persistence**: Using localStorage mock auth for MVP. User rejected Supabase ("charging the moon"). Can add real backend later when collaboration features needed.
 
-3. **Column widths persist in database** - SystemsTable levelWidths and meaningWidth stored in SystemsTableElement schema. Props passed from WorkspaceEditor, callbacks save to IndexedDB on resize. Survives workspace switches.
+3. **Figma as reference only**: Built auth pages from scratch following Figma design patterns (centered layout, social buttons, proper spacing). Did NOT copy Figma code exports.
 
-4. **Close button moved to split-view workspace** - Was in top nav bar, now absolute positioned top-right of split-view div. User can close split-view from within the split workspace.
+4. **Existing workspace preserved**: Original WorkspaceSystem at /workspace route completely untouched. Dashboard links to it via "Open Workspace Editor" button.
+
+5. **WCAG 2.1 AA compliance**: All forms have proper labels, ARIA attributes, focus states (focus:ring-2 focus:ring-primary), keyboard navigation.
 
 ## Decisions Made
 
-- **Decision:** Add levelWidths/meaningWidth to database schema
-  **Rationale:** Column widths were local state, lost when switching workspaces. Added to SystemsTableElement (database.ts:33-34), connected via props (SystemsTable.tsx), persist on change (WorkspaceEditor callbacks to IndexedDB).
+- **Decision:** localStorage mock auth instead of real backend
+  **Rationale:** User cost constraint - rejected Supabase. localStorage sufficient for MVP (login, signup, reset, session management). Can migrate to Firebase/Supabase when collaboration features added.
 
-- **Decision:** Use git-based workflow for UI trial-and-error
-  **Rationale:** User wants to try different split-view approaches (cell-aligned vs 50/50 vs other). Considered config flags or settings panel, chose git commits as simplest (commit before change, revert if doesn't look good). User preference: "git based approach works well for now".
+- **Decision:** Figma tokens → CSS variables (not tailwind.config.js)
+  **Rationale:** Project uses Tailwind CSS v4 which uses @layer theme with CSS variables natively. Updated :root in src/index.css with --primary, --neutral-*, --success/warning/error colors.
 
-- **Decision:** 50/50 split-view layout (current state, may revert)
-  **Rationale:** User initially wanted cell-aligned, tried it, changed mind to 50/50. Flex layout with w-1/2 on both sides, blue border separator. Close button inside split-view div (absolute top-2 right-2).
+- **Decision:** Protected routes with ProtectedRoute wrapper
+  **Rationale:** Cleaner than inline auth checks in every component. Wrapper checks auth.isAuthenticated(), redirects to /login if false. Applied to /dashboard and /workspace routes.
+
+- **Decision:** Minimal Dashboard placeholder
+  **Rationale:** User directive "minimal scope" - focus on auth flow first. Full Dashboard (workspace browser grid/list, search, templates) deferred to avoid scope creep.
 
 ## Files Modified This Session
 
-- `src/components/workspace-system/WorkspaceSystem.tsx:12` - Added `workspaces: Workspace[]` to WorkspaceContextType
-- `src/components/workspace-system/WorkspaceSystem.tsx:126` - Removed splitViewPosition state
-- `src/components/workspace-system/WorkspaceSystem.tsx:174-178` - Removed position setting in handleNavigateToWorkspace
-- `src/components/workspace-system/WorkspaceSystem.tsx:312` - Removed Close Split View button from top nav
-- `src/components/workspace-system/WorkspaceSystem.tsx:314-356` - Changed to 50/50 flex layout, Close button inside split-view workspace
-- `src/db/database.ts:33-34` - Added levelWidths/meaningWidth to SystemsTableElement
-- `src/components/systems-table/SystemsTable.tsx:26-30,61-65,138-147` - Added width persistence props/callbacks
-- `src/components/workspace-system/WorkspaceEditor.tsx` - Connected SystemsTable width props to IndexedDB
-- `src/components/systems-table/RichTextCell.tsx:130-148,333-351` - Updated split-view click handlers (may change)
+- `src/styles/tokens.ts` - Created Figma design tokens (colors, spacing, shadows, typography)
+- `src/index.css` - Updated :root with --primary: #3b82f6, status colors, neutral grays
+- `package.json` - Added react-router-dom@6.28.0
+- `src/lib/mockAuth.ts` - Created localStorage auth (login, signup, resetPassword, getCurrentUser, updateProfile)
+- `src/pages/Login.tsx` - Email/password form, social buttons, validation, loading states
+- `src/pages/Signup.tsx` - Signup with password confirmation, terms checkbox
+- `src/pages/ResetPassword.tsx` - Reset flow with success state modal
+- `src/components/ProtectedRoute.tsx` - Auth guard wrapper for React Router
+- `src/pages/Dashboard.tsx` - Minimal placeholder with logout, workspace nav button
+- `src/App.tsx` - Replaced direct WorkspaceSystem with BrowserRouter + Routes
 
 ## Blockers/Risks
-None. User is in UI exploration phase, expects changes.
+
+- [ ] **IMMEDIATE FIX REQUIRED**: Login form layout broken - max-w-md not applied, fields span full desktop width. Need Chrome DevTools inspection.
+- [ ] Chrome DevTools MCP conflict: Multiple instances running, preventing browser tools. Need to resolve for visual QA.
+- [ ] No real backend: localStorage won't support collaboration (planned for future, not MVP blocker).
 
 ## Handover Prompt
 
-"Continue Bridge System App MVP. All persistence working - column widths survive workspace switches (database.ts:33-34). Split-view currently 50/50 layout with Close button on workspace (WorkspaceSystem.tsx:314-356). User in trial-and-error mode: may request reverting to cell-aligned split (git commit 852ce14) or other UI changes. Use git workflow: commit before changes. Dev server: localhost:3000."
+"Bridge System App auth infrastructure complete on branch feature/auth-dashboard (4 commits). Login/Signup/Reset pages built with Figma design tokens and React Router. Dev server on http://localhost:3001/. CRITICAL BLOCKER: Login form spans full desktop width (max-width not applied). Use Chrome DevTools to inspect layout, fix width constraints, then build full Dashboard with workspace browser. Reference HANDOVER.md for decisions."

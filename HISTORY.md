@@ -1,5 +1,57 @@
 # Documentation History - Bridge System App
 
+## 2025-11-22 15:00 IST
+**Session:** Auth infrastructure and routing (NEW FEATURE BRANCH)
+**Thread Context:** 77K tokens
+**Branch:** feature/auth-dashboard (4 commits)
+
+**CLAUDE.md Changes:**
+- No changes (no modifications to existing project fundamentals)
+
+**HANDOVER.md Changes:**
+- Replaced entirely: New handover for auth infrastructure work on feature branch
+- Updated: Session metadata, branch info
+- Updated: Exact position - now tracking AUTH_DASHBOARD_INSTRUCTIONS.md phases
+- Added: 4 architecture decisions (localStorage auth, CSS variables, protected routes, minimal Dashboard)
+- Added: Layout blocker (login form max-width bug)
+- Updated: Critical context - layout bug, no backend, Figma reference, WCAG compliance
+
+**Key Decisions:**
+- Mock localStorage auth over real backend (user rejected Supabase due to cost)
+- Figma design tokens → CSS variables in :root (Tailwind v4 native approach)
+- Protected routes pattern with ProtectedRoute wrapper component
+- Minimal Dashboard placeholder to focus on auth flow first
+
+**Work Completed:**
+- Extracted Figma design tokens to src/styles/tokens.ts
+- Updated src/index.css :root with primary blue #3b82f6, status colors, neutral scale
+- Installed react-router-dom@6.28.0
+- Built mock auth library (src/lib/mockAuth.ts) with localStorage persistence
+- Built Login page (src/pages/Login.tsx) - social buttons, validation, focus states
+- Built Signup page (src/pages/Signup.tsx) - password confirmation, terms checkbox
+- Built Reset Password page (src/pages/ResetPassword.tsx) - email input, success state
+- Created ProtectedRoute wrapper (src/components/ProtectedRoute.tsx)
+- Created minimal Dashboard placeholder (src/pages/Dashboard.tsx)
+- Updated App.tsx with React Router (BrowserRouter, Routes, protected/public routes)
+- Verified routing works: unauthenticated users redirect to /login
+
+**Blockers Added:**
+- Login form layout bug: max-width not working, fields span full desktop width
+- Chrome DevTools MCP instance conflicts (multiple processes running)
+
+**Git Commits (feature/auth-dashboard):**
+- aff870a: Extract design tokens from Figma and install React Router
+- 08be7bf: Build mock auth library and Login page
+- d230fb3: Build Signup and Reset Password pages
+- 6fa3651: Setup React Router with protected routes and minimal Dashboard
+
+**Next Session:**
+- Use Chrome DevTools to inspect login page layout bug
+- Fix max-width constraints on auth forms
+- Build full Dashboard with workspace browser (grid/list views, search)
+
+---
+
 ## 2025-11-22 12:42 IST
 **Session:** IndexedDB persistence + hyperlink bug fixes (3 major bugs)
 **Thread Context:** 123K tokens (continuation thread)
