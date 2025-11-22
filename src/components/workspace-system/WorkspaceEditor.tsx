@@ -10,6 +10,7 @@ import { TextFormatPanel } from './TextFormatPanel';
 import { TextElementFormatPanel } from './TextElementFormatPanel';
 import { PdfElementComponent } from './PdfElement';
 import * as pdfjsLib from 'pdfjs-dist';
+import { elementOperations, WorkspaceElement as DBWorkspaceElement } from '../../db/database';
 
 interface GridlineOptions {
   enabled: boolean;
@@ -54,7 +55,7 @@ interface WorkspaceEditorProps {
   onTitleChange?: (title: string) => void;
   onClose?: () => void;
   existingWorkspaces?: string[];
-  onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'new-page', position?: { x: number; y: number }) => void;
+  onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => void;
   hideControls?: boolean;
   initialElements?: WorkspaceElement[];
 }
@@ -72,25 +73,8 @@ export function WorkspaceEditor({
   initialElements = []
 }: WorkspaceEditorProps) {
   const [title, setTitle] = useState(initialTitle);
-  const [elements, setElements] = useState<WorkspaceElement[]>(() => {
-    // If initial elements are provided, use them
-    if (initialElements.length > 0) {
-      return initialElements;
-    }
-    // Otherwise, create a default text element with "Title" content
-    const defaultElement: TextElement = {
-      id: 'title-' + Math.random().toString(36).substring(7),
-      type: 'text',
-      position: { x: 20, y: 20 },
-      size: { width: 600, height: 34 },
-      zIndex: 0,
-      content: 'Title',
-      htmlContent: '<div>Title</div>',
-      borderColor: 'transparent',
-      borderWidth: 0
-    };
-    return [defaultElement];
-  });
+  const [elements, setElements] = useState<WorkspaceElement[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formatPanelId, setFormatPanelId] = useState<string | null>(null);
   const [deletedElement, setDeletedElement] = useState<WorkspaceElement | null>(null);
@@ -101,6 +85,41 @@ export function WorkspaceEditor({
   const tableRowsRef = useRef<Map<string, RowData[]>>(new Map());
   const textElementApplyFormatRef = useRef<((format: any) => void) | null>(null);
   const cellApplyFormatRef = useRef<((format: any) => void) | null>(null);
+
+  // Load elements from DB on mount
+  useEffect(() => {
+    const loadElements = async () => {
+      setIsLoading(true);
+      const dbElements = await elementOperations.getByWorkspaceId(workspaceId);
+
+      if (dbElements.length === 0 && initialElements.length === 0) {
+        // Create default text element with "Title" content
+        const defaultElement: TextElement & { workspaceId: string } = {
+          id: 'title-' + Math.random().toString(36).substring(7),
+          workspaceId,
+          type: 'text',
+          position: { x: 20, y: 20 },
+          size: { width: 600, height: 34 },
+          zIndex: 0,
+          content: 'Title',
+          htmlContent: '<div>Title</div>',
+          borderColor: 'transparent',
+          borderWidth: 0
+        };
+        await elementOperations.create(defaultElement);
+        setElements([defaultElement]);
+      } else if (dbElements.length > 0) {
+        setElements(dbElements);
+      } else if (initialElements.length > 0) {
+        // Use initial elements if provided (for popup comment boxes)
+        setElements(initialElements);
+      }
+
+      setIsLoading(false);
+    };
+
+    loadElements();
+  }, [workspaceId]);
 
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle);
@@ -129,10 +148,11 @@ export function WorkspaceEditor({
     return { x: 20, y: maxBottom + spacing };
   };
 
-  const handleInsertSystemsTable = () => {
+  const handleInsertSystemsTable = async () => {
     const position = getNextPosition();
-    const newElement: SystemsTableElement = {
+    const newElement: SystemsTableElement & { workspaceId: string } = {
       id: Math.random().toString(36).substring(7),
+      workspaceId,
       type: 'systems-table',
       position,
       size: { width: 680, height: 200 },
@@ -145,13 +165,15 @@ export function WorkspaceEditor({
         width: 1
       }
     };
+    await elementOperations.create(newElement);
     setElements([...elements, newElement]);
   };
 
-  const handleInsertText = () => {
+  const handleInsertText = async () => {
     const position = getNextPosition();
-    const newElement: TextElement = {
+    const newElement: TextElement & { workspaceId: string } = {
       id: Math.random().toString(36).substring(7),
+      workspaceId,
       type: 'text',
       position,
       size: { width: 600, height: 34 },
@@ -160,6 +182,7 @@ export function WorkspaceEditor({
       borderColor: 'transparent',
       borderWidth: 0
     };
+    await elementOperations.create(newElement);
     setElements([...elements, newElement]);
   };
 
@@ -167,14 +190,15 @@ export function WorkspaceEditor({
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
           const position = getNextPosition();
-          const newElement: ImageElement = {
+          const newElement: ImageElement & { workspaceId: string } = {
             id: Math.random().toString(36).substring(7),
+            workspaceId,
             type: 'image',
             position,
             size: { width: 400, height: 300 },
@@ -184,6 +208,7 @@ export function WorkspaceEditor({
             borderColor: 'transparent',
             borderWidth: 0
           };
+          await elementOperations.create(newElement);
           setElements([...elements, newElement]);
         };
         reader.readAsDataURL(file);
@@ -227,8 +252,9 @@ export function WorkspaceEditor({
               }
             }
             
-            const newElement: PdfElement = {
+            const newElement: PdfElement & { workspaceId: string } = {
               id: Math.random().toString(36).substring(7),
+              workspaceId,
               type: 'pdf',
               position,
               size: { width: 600, height: 800 },
@@ -240,14 +266,16 @@ export function WorkspaceEditor({
               borderColor: 'transparent',
               borderWidth: 0
             };
+            await elementOperations.create(newElement);
             setElements([...elements, newElement]);
           } catch (error) {
             console.error('Error processing PDF:', error);
           }
         } else {
           // Handle other file types
-          const newElement: FileElement = {
+          const newElement: FileElement & { workspaceId: string } = {
             id: Math.random().toString(36).substring(7),
+            workspaceId,
             type: 'file',
             position,
             size: { width: 400, height: 80 },
@@ -258,6 +286,7 @@ export function WorkspaceEditor({
             borderColor: 'transparent',
             borderWidth: 0
           };
+          await elementOperations.create(newElement);
           setElements([...elements, newElement]);
         }
       }
@@ -265,38 +294,45 @@ export function WorkspaceEditor({
     input.click();
   };
 
-  const handleUpdate = (id: string, updates: Partial<BaseElement>) => {
+  const handleUpdate = async (id: string, updates: Partial<BaseElement>) => {
     setElements(elements.map((el, index) => {
       if (el.id === id) {
         const updated = { ...el, ...updates };
-        
+
         // If position is being updated, mark as manually positioned
         if (updates.position && !updates.isManuallyPositioned) {
           updated.isManuallyPositioned = true;
         }
-        
+
         // If this is the first element (default title element) and content is being updated
         if (index === 0 && 'content' in updated) {
           const textContent = (updated as TextElement).content || '';
           handleTitleChange(textContent);
         }
+
+        // Update in DB (async, don't wait)
+        elementOperations.update(id, updates);
+
         return updated;
       }
       return el;
     }));
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const elementToDelete = elements.find(el => el.id === id);
     if (!elementToDelete) return;
-    
+
     setElements(elements.filter(el => el.id !== id));
     if (selectedId === id) setSelectedId(null);
     if (formatPanelId === id) setFormatPanelId(null);
-    
+
     setDeletedElement(elementToDelete);
     tableRowsRef.current.delete(id);
-    
+
+    // Delete from DB (will be restored if undo is triggered)
+    await elementOperations.delete(id);
+
     if (undoTimerRef.current) {
       clearTimeout(undoTimerRef.current);
     }
@@ -305,8 +341,10 @@ export function WorkspaceEditor({
     }, 10000);
   };
 
-  const handleUndo = () => {
+  const handleUndo = async () => {
     if (deletedElement) {
+      // Restore to DB
+      await elementOperations.create(deletedElement as any);
       setElements(prev => [...prev, deletedElement]);
       setDeletedElement(null);
       if (undoTimerRef.current) {
@@ -315,8 +353,10 @@ export function WorkspaceEditor({
     }
   };
 
-  const handleRowsChange = (elementId: string, rows: RowData[]) => {
+  const handleRowsChange = async (elementId: string, rows: RowData[]) => {
     tableRowsRef.current.set(elementId, rows);
+    // Persist to database
+    await elementOperations.update(elementId, { initialRows: rows } as Partial<DBWorkspaceElement>);
   };
 
   const handleContentSizeChange = (elementId: string, width: number, height: number) => {
@@ -335,26 +375,28 @@ export function WorkspaceEditor({
 
   // Auto-reposition elements when sizes change
   useEffect(() => {
+    if (isLoading) return; // Don't reposition while loading
+
     let hasChanges = false;
     const updatedElements = [...elements];
-    
+
     // Sort elements by their zIndex/creation order to maintain intended stacking
     const sortedIndices = elements
       .map((_, index) => index)
       .sort((a, b) => elements[a].zIndex - elements[b].zIndex);
-    
+
     // Calculate target Y position for each element
     let cumulativeY = 20; // Start position
-    
+
     for (let i = 0; i < sortedIndices.length; i++) {
       const index = sortedIndices[i];
       const element = elements[index];
-      
+
       // Skip manually positioned elements - they don't participate in auto-layout
       if (element.isManuallyPositioned) {
         continue;
       }
-      
+
       // Update position if it has changed
       if (element.position.y !== cumulativeY) {
         updatedElements[index] = {
@@ -363,15 +405,17 @@ export function WorkspaceEditor({
         };
         hasChanges = true;
       }
-      
+
       // Move cumulative Y down by this element's height plus spacing
       cumulativeY += element.size.height + ELEMENT_SPACING;
     }
-    
+
     if (hasChanges) {
       setElements(updatedElements);
+      // Bulk update DB with new positions
+      elementOperations.bulkUpdate(updatedElements as any);
     }
-  }, [elements.map(el => `${el.id}-${el.size.height}-${el.isManuallyPositioned}`).join(',')]);
+  }, [elements.map(el => `${el.id}-${el.size.height}-${el.isManuallyPositioned}`).join(','), isLoading]);
   
   useEffect(() => {
     return () => {
@@ -385,8 +429,17 @@ export function WorkspaceEditor({
 
   return (
     <div className="w-full h-full flex flex-col">
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-gray-500">Loading workspace...</p>
+        </div>
+      )}
+
       {/* Canvas Area */}
-      <div 
+      {!isLoading && (
+        <>
+      <div
         ref={containerRef}
         className="flex-1 relative overflow-auto bg-white"
         onClick={handleContainerClick}
@@ -418,10 +471,18 @@ export function WorkspaceEditor({
                       : 'none'
                   }}
                 >
-                  <SystemsTable 
-                    initialRows={tableElement.initialRows} 
+                  <SystemsTable
+                    initialRows={tableElement.initialRows}
                     gridlines={tableElement.gridlines}
+                    initialLevelWidths={tableElement.levelWidths}
+                    initialMeaningWidth={tableElement.meaningWidth}
                     onRowsChange={(rows) => handleRowsChange(element.id, rows)}
+                    onLevelWidthsChange={(levelWidths) => {
+                      elementOperations.update(element.id, { levelWidths } as Partial<DBWorkspaceElement>);
+                    }}
+                    onMeaningWidthChange={(meaningWidth) => {
+                      elementOperations.update(element.id, { meaningWidth } as Partial<DBWorkspaceElement>);
+                    }}
                     onCellFocusChange={(rowId, column, isFocused, applyFormatFn) => {
                       if (isFocused) {
                         setFocusedCellId({ tableId: element.id, rowId, column });
@@ -649,6 +710,8 @@ export function WorkspaceEditor({
             </Button>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

@@ -23,11 +23,25 @@ interface SystemsTableProps {
   breadcrumbMode?: boolean;
   initialRows?: RowData[];
   gridlines?: GridlineOptions;
+  initialLevelWidths?: { [level: number]: number };
+  initialMeaningWidth?: number;
   onRowsChange?: (rows: RowData[]) => void;
+  onLevelWidthsChange?: (levelWidths: { [level: number]: number }) => void;
+  onMeaningWidthChange?: (meaningWidth: number) => void;
   onCellFocusChange?: (rowId: string, column: 'bid' | 'meaning', isFocused: boolean, applyFormatFn?: (format: any) => void) => void;
 }
 
-export function SystemsTable({ breadcrumbMode = false, initialRows, gridlines, onRowsChange, onCellFocusChange }: SystemsTableProps) {
+export function SystemsTable({
+  breadcrumbMode = false,
+  initialRows,
+  gridlines,
+  initialLevelWidths,
+  initialMeaningWidth,
+  onRowsChange,
+  onLevelWidthsChange,
+  onMeaningWidthChange,
+  onCellFocusChange
+}: SystemsTableProps) {
   const [rows, setRows] = useState<RowData[]>(
     initialRows || [
       {
@@ -39,16 +53,16 @@ export function SystemsTable({ breadcrumbMode = false, initialRows, gridlines, o
       }
     ]
   );
-  
+
   const [history, setHistory] = useState<RowData[][]>([]);
   const [showUndoHighlight, setShowUndoHighlight] = useState(false);
   const [isTableHovered, setIsTableHovered] = useState(false);
   const [undoTimeoutId, setUndoTimeoutId] = useState<NodeJS.Timeout | null>(null);
-  const [levelWidths, setLevelWidths] = useState<{ [level: number]: number}>({
-    0: 80
-  });
+  const [levelWidths, setLevelWidths] = useState<{ [level: number]: number}>(
+    initialLevelWidths || { 0: 80 }
+  );
 
-  const [meaningWidth, setMeaningWidth] = useState<number>(680); // Total table width (80 + 600)
+  const [meaningWidth, setMeaningWidth] = useState<number>(initialMeaningWidth || 680); // Total table width (80 + 600)
 
   const generateId = () => Math.random().toString(36).substring(7);
 
@@ -122,7 +136,14 @@ export function SystemsTable({ breadcrumbMode = false, initialRows, gridlines, o
   };
 
   const updateLevelWidth = (level: number, width: number) => {
-    setLevelWidths(prev => ({ ...prev, [level]: width }));
+    const newLevelWidths = { ...levelWidths, [level]: width };
+    setLevelWidths(newLevelWidths);
+    onLevelWidthsChange?.(newLevelWidths);
+  };
+
+  const updateMeaningWidth = (width: number) => {
+    setMeaningWidth(width);
+    onMeaningWidthChange?.(width);
   };
 
   const getLevelWidth = (level: number): number => {
@@ -317,7 +338,7 @@ export function SystemsTable({ breadcrumbMode = false, initialRows, gridlines, o
             onToggleCollapsed={toggleCollapsed}
             breadcrumbMode={breadcrumbMode}
             meaningWidth={meaningWidth}
-            onUpdateMeaningWidth={setMeaningWidth}
+            onUpdateMeaningWidth={updateMeaningWidth}
             gridlines={gridlines}
             onCellFocusChange={onCellFocusChange}
           />

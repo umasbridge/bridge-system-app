@@ -21,7 +21,7 @@ interface TextElementProps {
   onUpdate: (updates: Partial<TextElement>) => void;
   onDelete: () => void;
   existingWorkspaces: string[];
-  onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'new-page', position?: { x: number; y: number }) => void;
+  onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => void;
   onFocusChange?: (isFocused: boolean, applyFormatFn?: (format: any) => void) => void;
 }
 

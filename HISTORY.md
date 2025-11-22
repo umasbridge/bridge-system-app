@@ -1,5 +1,60 @@
 # Documentation History - Bridge System App
 
+## 2025-11-22 12:42 IST
+**Session:** IndexedDB persistence + hyperlink bug fixes (3 major bugs)
+**Thread Context:** 123K tokens (continuation thread)
+
+**CLAUDE.md Changes:**
+- No changes (no architectural fundamentals modified)
+
+**HANDOVER.md Changes:**
+- Updated: Session metadata (new date, duration, token count)
+- Updated: Current status - IndexedDB persistence COMPLETE, all hyperlink bugs FIXED
+- Updated: Exact position - marked Task 3, 3a, 3b, 3c as completed
+- Updated: Critical context - replaced persistence next step with actual bugs found/fixed
+- Added: SystemsTable row persistence pattern, workspace context conflict explanation, onclick handler persistence issue
+- Added: Three decisions with detailed rationale (persist row data, remove context conflict, event delegation)
+- Updated: Files modified - comprehensive changes across 8 files
+
+**Key Decisions:**
+- Persist SystemsTable rows immediately in handleRowsChange (WorkspaceEditor.tsx:356-360)
+- Remove WorkspaceProvider wrapper, create context in WorkspaceSystem that uses IndexedDB
+- Event delegation for hyperlinks instead of inline onclick handlers
+
+**Work Completed:**
+- FIXED SystemsTable row persistence bug:
+  - Root cause: handleRowsChange only saved to tableRowsRef (memory), never database
+  - Solution: Added `await elementOperations.update(elementId, { initialRows: rows })`
+  - Tested: Table data persists across page refreshes
+- FIXED hyperlink opening wrong/empty workspaces:
+  - Root cause: Two workspace contexts (WorkspaceProvider vs WorkspaceSystem) conflicted
+  - RichTextCell used wrong context, created empty workspaces instead of finding existing ones
+  - Solution: Removed App.tsx wrapper, created WorkspaceContext in WorkspaceSystem.tsx
+  - Added context provider with openWorkspacePopup/SplitView/NewPage functions
+  - Updated RichTextCell import to use new context
+- FIXED hyperlink onclick handlers lost on reload:
+  - Root cause: Inline onclick set during creation, but lost when HTML loaded from database
+  - Solution: Event delegation in RichTextCell.tsx:95-151
+  - Single onClick on contentEditable checks `target.closest('a[data-workspace]')`
+  - Reads data-workspace and data-link-type attributes, calls context functions
+- TESTED end-to-end with Chrome DevTools MCP:
+  - Verified table data persists after refresh
+  - Verified XYZ hyperlink opens correct workspace with content: "This is the standard XYZ system we will build off of"
+  - Popup shows actual database content, not empty workspace
+
+**Files Modified:**
+- src/components/workspace-system/WorkspaceEditor.tsx:356-360
+- src/App.tsx:1-5
+- src/components/workspace-system/WorkspaceSystem.tsx:1,18-26,255-265,267,385
+- src/components/systems-table/RichTextCell.tsx:7,95-151,377
+
+**Next Session:**
+- Continue with remaining MVP features
+- Consider templates implementation
+- UI polish and testing
+
+---
+
 ## 2025-11-21 22:20 IST
 **Session:** Text formatting bug fix + Chrome DevTools MCP configuration
 **Thread Context:** 116K tokens

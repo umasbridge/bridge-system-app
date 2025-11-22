@@ -4,7 +4,7 @@ import { Link, Type } from 'lucide-react';
 import { Button } from '../ui/button';
 import { TextFormatPanel } from '../embedded-content/TextFormatPanel';
 import { WorkspaceHyperlinkMenu } from './WorkspaceHyperlinkMenu';
-import { useWorkspaceContext } from './WorkspaceManager';
+import { useWorkspaceContext } from '../workspace-system/WorkspaceSystem';
 
 interface RichTextCellProps {
   value: string;
@@ -90,6 +90,67 @@ export function RichTextCell({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Check if a hyperlink was clicked
+    const target = e.target as HTMLElement;
+    const link = target.closest('a[data-workspace]');
+
+    if (link && workspaceContext) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const workspaceName = link.getAttribute('data-workspace');
+      const linkType = link.getAttribute('data-link-type') as 'comment' | 'split-view' | 'new-page';
+
+      if (!workspaceName) return;
+
+      switch (linkType) {
+        case 'comment':
+          // Find the parent table element to position the comment box to its right
+          let tableElement = link.closest('[data-table-element]');
+
+          if (tableElement) {
+            const tableRect = tableElement.getBoundingClientRect();
+            // Position comment box to the right of the table with some spacing
+            workspaceContext.openWorkspacePopup(workspaceName, {
+              x: tableRect.right + 20,
+              y: tableRect.top
+            });
+          } else {
+            // Fallback to positioning near the clicked text
+            const rect = link.getBoundingClientRect();
+            workspaceContext.openWorkspacePopup(workspaceName, {
+              x: rect.left,
+              y: rect.bottom
+            });
+          }
+          break;
+        case 'split-view':
+          // Find the cell containing the clicked link
+          let columnElement = link.closest('[data-column-type]');
+
+          if (columnElement) {
+            const columnRect = columnElement.getBoundingClientRect();
+            const rowElement = columnElement.parentElement;
+            const rowRect = rowElement?.getBoundingClientRect();
+
+            // Position split view to the right of the clicked cell, aligned with the row's top
+            workspaceContext.openWorkspaceSplitView(workspaceName, {
+              x: columnRect.right,
+              y: rowRect ? rowRect.top : columnRect.top
+            });
+          } else {
+            // Fallback
+            workspaceContext.openWorkspaceSplitView(workspaceName, { x: window.innerWidth / 2, y: 0 });
+          }
+          break;
+        case 'new-page':
+          workspaceContext.openWorkspaceNewPage(workspaceName);
+          break;
+      }
+    }
   };
 
   const handleFocus = () => {
@@ -270,15 +331,18 @@ export function RichTextCell({
           }
           break;
         case 'split-view':
-          // Find the parent column element (div with data-column-type)
-          let columnElement = (e.target as HTMLElement).closest('[data-column-type]');
-          
-          if (columnElement) {
-            const columnRect = columnElement.getBoundingClientRect();
-            // Position split view so its left edge aligns with the column's right edge
+          // Find the cell containing the clicked link
+          let columnElementForSplit = (e.target as HTMLElement).closest('[data-column-type]');
+
+          if (columnElementForSplit) {
+            const columnRectForSplit = columnElementForSplit.getBoundingClientRect();
+            const rowElementForSplit = columnElementForSplit.parentElement;
+            const rowRectForSplit = rowElementForSplit?.getBoundingClientRect();
+
+            // Position split view to the right of the clicked cell, aligned with the row's top
             workspaceContext.openWorkspaceSplitView(workspaceName, {
-              x: columnRect.right,
-              y: 0 // Always start from top of viewport
+              x: columnRectForSplit.right,
+              y: rowRectForSplit ? rowRectForSplit.top : columnRectForSplit.top
             });
           } else {
             // Fallback
@@ -316,6 +380,7 @@ export function RichTextCell({
         ref={contentEditableRef}
         contentEditable
         onInput={handleInput}
+        onClick={handleClick}
         onMouseDown={handleMouseDown}
         onFocus={handleFocus}
         onBlur={handleBlur}

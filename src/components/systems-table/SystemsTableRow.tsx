@@ -60,6 +60,12 @@ export function SystemsTableRow({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isHovered) return;
 
+      // Don't trigger shortcuts when user is typing in a contenteditable cell
+      const target = e.target as HTMLElement;
+      if (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+
       if (e.key === '+') {
         e.preventDefault();
         // Check if it's ++ (double plus)

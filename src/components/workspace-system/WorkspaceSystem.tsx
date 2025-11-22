@@ -1,11 +1,29 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { Button } from '../ui/button';
 import { Plus, X } from 'lucide-react';
 import { WorkspaceEditor } from './WorkspaceEditor';
+import { workspaceOperations, Workspace as DBWorkspace } from '../../db/database';
 
 interface Workspace {
   id: string;
   title: string;
+}
+
+interface WorkspaceContextType {
+  workspaces: Workspace[];
+  openWorkspacePopup: (workspaceName: string, position?: { x: number; y: number }) => void;
+  openWorkspaceSplitView: (workspaceName: string, position?: { x: number; y: number }) => void;
+  openWorkspaceNewPage: (workspaceName: string) => void;
+}
+
+const WorkspaceContext = createContext<WorkspaceContextType | null>(null);
+
+export function useWorkspaceContext() {
+  const context = useContext(WorkspaceContext);
+  if (!context) {
+    throw new Error('useWorkspaceContext must be used within WorkspaceSystem');
+  }
+  return context;
 }
 
 interface CommentBoxProps {
@@ -105,58 +123,66 @@ function CommentBox({ workspaceName, position, workspace, onClose, onMouseDown, 
 export function WorkspaceSystem() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [splitViewWorkspaceId, setSplitViewWorkspaceId] = useState<string | null>(null);
+  const [splitViewPosition, setSplitViewPosition] = useState<{ x: number; y: number } | null>(null);
   const [popupWorkspace, setPopupWorkspace] = useState<string | null>(null);
   const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-  // Create default workspace on initial load
+  // Load workspaces from DB on initial load
   useEffect(() => {
-    if (workspaces.length === 0) {
-      const defaultWorkspace: Workspace = {
-        id: Math.random().toString(36).substring(7),
-        title: 'Workspace 1'
-      };
-      setWorkspaces([defaultWorkspace]);
-      setActiveWorkspaceId(defaultWorkspace.id);
-    }
+    const loadWorkspaces = async () => {
+      const dbWorkspaces = await workspaceOperations.getAll();
+      if (dbWorkspaces.length === 0) {
+        // Create default workspace if none exist
+        const defaultWorkspace = await workspaceOperations.create('Workspace 1');
+        setWorkspaces([defaultWorkspace]);
+        setActiveWorkspaceId(defaultWorkspace.id);
+      } else {
+        setWorkspaces(dbWorkspaces);
+        setActiveWorkspaceId(dbWorkspaces[0].id);
+      }
+    };
+    loadWorkspaces();
   }, []);
 
-  const handleCreateWorkspace = (title?: string) => {
+  const handleCreateWorkspace = async (title?: string) => {
     const existingWorkspace = workspaces.find(ws => ws.title === (title || 'Untitled Workspace'));
     if (existingWorkspace) {
       return existingWorkspace.id;
     }
-    
-    const newWorkspace: Workspace = {
-      id: Math.random().toString(36).substring(7),
-      title: title || 'Untitled Workspace'
-    };
+
+    const newWorkspace = await workspaceOperations.create(title || 'Untitled Workspace');
     setWorkspaces([...workspaces, newWorkspace]);
     setActiveWorkspaceId(newWorkspace.id);
     return newWorkspace.id;
   };
 
-  const handleNavigateToWorkspace = (workspaceName: string, linkType: 'comment' | 'new-page', position?: { x: number; y: number }) => {
+  const handleNavigateToWorkspace = async (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => {
     // Check if workspace already exists, create if not
-    const existingWorkspace = workspaces.find(ws => ws.title === workspaceName);
+    let existingWorkspace = workspaces.find(ws => ws.title === workspaceName);
     if (!existingWorkspace) {
-      const newWorkspace: Workspace = {
-        id: Math.random().toString(36).substring(7),
-        title: workspaceName
-      };
+      const newWorkspace = await workspaceOperations.create(workspaceName);
       setWorkspaces([...workspaces, newWorkspace]);
+      existingWorkspace = newWorkspace;
     }
-    
+
     if (linkType === 'comment') {
       // Open as popup comment box
       setPopupWorkspace(workspaceName);
       setPopupPosition(position || { x: 100, y: 100 });
+    } else if (linkType === 'split-view') {
+      // Open in split view next to active workspace
+      if (existingWorkspace) {
+        setSplitViewWorkspaceId(existingWorkspace.id);
+        setSplitViewPosition(position || { x: window.innerWidth / 2, y: 0 });
+      }
     } else {
       // For new-page, navigate to the workspace tab
-      const workspace = existingWorkspace || workspaces[workspaces.length - 1];
-      if (workspace) {
-        setActiveWorkspaceId(workspace.id);
+      if (existingWorkspace) {
+        setActiveWorkspaceId(existingWorkspace.id);
+        setSplitViewWorkspaceId(null); // Close split view when switching tabs
       }
     }
   };
@@ -210,13 +236,15 @@ export function WorkspaceSystem() {
     }
   }, [isDragging, dragOffset]);
 
-  const handleTitleChange = (workspaceId: string, newTitle: string) => {
-    setWorkspaces(workspaces.map(ws => 
+  const handleTitleChange = async (workspaceId: string, newTitle: string) => {
+    await workspaceOperations.update(workspaceId, { title: newTitle });
+    setWorkspaces(workspaces.map(ws =>
       ws.id === workspaceId ? { ...ws, title: newTitle } : ws
     ));
   };
 
-  const handleCloseWorkspace = (workspaceId: string) => {
+  const handleCloseWorkspace = async (workspaceId: string) => {
+    await workspaceOperations.delete(workspaceId);
     setWorkspaces(workspaces.filter(ws => ws.id !== workspaceId));
     if (activeWorkspaceId === workspaceId) {
       const remainingWorkspaces = workspaces.filter(ws => ws.id !== workspaceId);
@@ -225,12 +253,27 @@ export function WorkspaceSystem() {
   };
 
   const activeWorkspace = workspaces.find(ws => ws.id === activeWorkspaceId);
+  const splitViewWorkspace = workspaces.find(ws => ws.id === splitViewWorkspaceId);
+
+  const contextValue: WorkspaceContextType = {
+    workspaces,
+    openWorkspacePopup: (workspaceName: string, position?: { x: number; y: number }) => {
+      handleNavigateToWorkspace(workspaceName, 'comment', position);
+    },
+    openWorkspaceSplitView: (workspaceName: string, position?: { x: number; y: number }) => {
+      handleNavigateToWorkspace(workspaceName, 'split-view', position);
+    },
+    openWorkspaceNewPage: (workspaceName: string) => {
+      handleNavigateToWorkspace(workspaceName, 'new-page');
+    }
+  };
 
   return (
-    <div className="w-full h-screen flex flex-col">
+    <WorkspaceContext.Provider value={contextValue}>
+      <div className="w-full h-screen flex flex-col">
       {/* Top Navigation Bar */}
       <div className="bg-white border-b border-gray-200 flex items-center px-4 py-2 gap-2">
-        <Button 
+        <Button
           onClick={() => handleCreateWorkspace()}
           size="sm"
           className="gap-2"
@@ -238,7 +281,7 @@ export function WorkspaceSystem() {
           <Plus className="h-4 w-4" />
           Create New Workspace
         </Button>
-        
+
         {/* Workspace Tabs */}
         {workspaces.length > 0 && (
           <div className="flex-1 flex items-center gap-1 overflow-x-auto ml-4">
@@ -268,21 +311,64 @@ export function WorkspaceSystem() {
             ))}
           </div>
         )}
+
+        {/* Close Split View Button */}
+        {splitViewWorkspaceId && (
+          <Button
+            onClick={() => setSplitViewWorkspaceId(null)}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+            <X className="h-4 w-4" />
+            Close Split View
+          </Button>
+        )}
       </div>
 
       {/* Workspace Content Area */}
       <div className="flex-1 overflow-hidden relative">
         {activeWorkspace ? (
           <div className="absolute inset-0">
-            <WorkspaceEditor
-              key={activeWorkspace.id}
-              workspaceId={activeWorkspace.id}
-              initialTitle={activeWorkspace.title}
-              onTitleChange={(newTitle) => handleTitleChange(activeWorkspace.id, newTitle)}
-              onClose={() => handleCloseWorkspace(activeWorkspace.id)}
-              existingWorkspaces={workspaces.map(ws => ws.title)}
-              onNavigateToWorkspace={handleNavigateToWorkspace}
-            />
+            {/* Main Workspace */}
+            <div className="w-full h-full">
+              <WorkspaceEditor
+                key={activeWorkspace.id}
+                workspaceId={activeWorkspace.id}
+                initialTitle={activeWorkspace.title}
+                onTitleChange={(newTitle) => handleTitleChange(activeWorkspace.id, newTitle)}
+                onClose={() => handleCloseWorkspace(activeWorkspace.id)}
+                existingWorkspaces={workspaces.map(ws => ws.title)}
+                onNavigateToWorkspace={handleNavigateToWorkspace}
+              />
+            </div>
+
+            {/* Split View Workspace - Absolutely positioned */}
+            {splitViewWorkspaceId && splitViewWorkspace && splitViewPosition && (
+              <div
+                className="fixed border-l-2 border-blue-500 bg-white shadow-2xl"
+                style={{
+                  left: `${splitViewPosition.x}px`,
+                  top: `${splitViewPosition.y}px`,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 50
+                }}
+              >
+                <WorkspaceEditor
+                  key={splitViewWorkspace.id}
+                  workspaceId={splitViewWorkspace.id}
+                  initialTitle={splitViewWorkspace.title}
+                  onTitleChange={(newTitle) => handleTitleChange(splitViewWorkspace.id, newTitle)}
+                  onClose={() => {
+                    setSplitViewWorkspaceId(null);
+                    setSplitViewPosition(null);
+                  }}
+                  existingWorkspaces={workspaces.map(ws => ws.title)}
+                  onNavigateToWorkspace={handleNavigateToWorkspace}
+                />
+              </div>
+            )}
           </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -312,5 +398,6 @@ export function WorkspaceSystem() {
         )}
       </div>
     </div>
+    </WorkspaceContext.Provider>
   );
 }
