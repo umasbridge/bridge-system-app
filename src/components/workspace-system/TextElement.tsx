@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { Link, Type } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { Button } from '../ui/button';
 import { ResizableElement } from '../element-look-and-feel/ResizableElement';
 import { BaseElement } from '../element-look-and-feel/types';
@@ -22,7 +22,7 @@ interface TextElementProps {
   onDelete: () => void;
   existingWorkspaces: string[];
   onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => void;
-  onFocusChange?: (isFocused: boolean, applyFormatFn?: (format: any) => void) => void;
+  onFocusChange?: (isFocused: boolean, applyFormatFn?: (format: any) => void, applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'new-page') => void, selectedText?: string) => void;
 }
 
 export function TextElementComponent({
@@ -44,11 +44,19 @@ export function TextElementComponent({
   const [showHyperlinkMenu, setShowHyperlinkMenu] = useState(false);
   const [showTextFormatPanel, setShowTextFormatPanel] = useState(false);
   const isInternalUpdate = useRef(false);
+  const isClickingImage = useRef(false);
   const [isEditMode, setIsEditMode] = useState(false); // Track if we're in edit mode
   const [minResizeHeight, setMinResizeHeight] = useState(34); // Default minimum height
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
   const [imageResizing, setImageResizing] = useState(false);
   const imageResizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
+
+  // Notify parent when selected text changes (for side panel)
+  useEffect(() => {
+    if (isEditMode && onFocusChange) {
+      onFocusChange(true, applyFormat, applyHyperlink, selectedText);
+    }
+  }, [selectedText]);
 
   // Initialize content on mount
   useEffect(() => {
@@ -151,6 +159,26 @@ export function TextElementComponent({
     }
   };
 
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Check if clicking on an image
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'IMG') {
+      e.stopPropagation();
+      isClickingImage.current = true;
+      setSelectedImage(target as HTMLImageElement);
+      setHasTextSelection(false);
+
+      // Immediately prevent format panel from showing
+      if (onFocusChange) {
+        onFocusChange(false);
+      }
+
+      setTimeout(() => {
+        isClickingImage.current = false;
+      }, 100);
+    }
+  };
+
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -217,9 +245,20 @@ export function TextElementComponent({
     const target = e.target as HTMLElement;
     if (target.tagName === 'IMG') {
       e.stopPropagation();
+      isClickingImage.current = true;
       setSelectedImage(target as HTMLImageElement);
       // Clear text selection when selecting image
       setHasTextSelection(false);
+
+      // Immediately prevent format panel from showing
+      if (onFocusChange) {
+        onFocusChange(false);
+      }
+
+      // Clear the flag after a short delay
+      setTimeout(() => {
+        isClickingImage.current = false;
+      }, 100);
     }
   };
 
@@ -261,7 +300,7 @@ export function TextElementComponent({
     };
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!selectedImage) return;
+      if (!selectedImage || !contentEditableRef.current) return;
 
       const deltaX = moveEvent.clientX - imageResizeStart.current.x;
       const deltaY = moveEvent.clientY - imageResizeStart.current.y;
@@ -283,20 +322,40 @@ export function TextElementComponent({
         newHeight = newWidth / aspectRatio;
       }
 
+      // Set image dimensions directly - allow it to overflow container during drag
       selectedImage.style.width = `${newWidth}px`;
       selectedImage.style.height = `${newHeight}px`;
+      selectedImage.style.maxWidth = 'none'; // Remove max-width constraint during resize
     };
 
     const handleMouseUp = () => {
       setImageResizing(false);
 
-      // Save updated content
-      if (contentEditableRef.current) {
+      // Save updated content and adjust width/height if needed
+      if (contentEditableRef.current && selectedImage) {
+        // Get the actual image dimensions from inline styles (not offsetWidth which might be constrained)
+        const imageWidth = parseInt(selectedImage.style.width) || selectedImage.offsetWidth;
+        const imageHeight = parseInt(selectedImage.style.height) || selectedImage.offsetHeight;
+
+        const containerPadding = 16; // Account for px-2 (8px each side)
+        const borderWidth = (element.borderWidth || 1) * 2;
+        const borderHeight = (element.borderWidth || 1) * 2;
+
+        // Calculate required dimensions based on image size (no minimums - let it shrink)
+        const requiredHeight = imageHeight + (containerPadding * 2) + borderHeight;
+        const requiredWidth = imageWidth + (containerPadding * 2) + borderWidth;
+
         const htmlContent = contentEditableRef.current.innerHTML;
         const textContent = contentEditableRef.current.textContent || '';
+
+        // Update container to fit the image (can grow or shrink)
         onUpdate({
           content: textContent,
-          htmlContent: htmlContent
+          htmlContent: htmlContent,
+          size: {
+            width: requiredWidth,
+            height: requiredHeight
+          }
         });
       }
 
@@ -309,12 +368,22 @@ export function TextElementComponent({
   };
 
   const handleFocus = () => {
+    // Don't show format panel when an image is selected
+    if (selectedImage) {
+      return;
+    }
+
+    // Don't show format panel when clicking an image
+    if (isClickingImage.current) {
+      return;
+    }
+
     // When clicking inside to type, we're entering "edit mode"
     // The parent will handle clearing selection
 
-    // Notify parent that this element is focused and pass the applyFormat function
+    // Notify parent that this element is focused and pass the applyFormat and applyHyperlink functions
     if (onFocusChange) {
-      onFocusChange(true, applyFormat);
+      onFocusChange(true, applyFormat, applyHyperlink);
     }
     setIsEditMode(true);
   };
@@ -679,22 +748,23 @@ export function TextElementComponent({
         showFormatButton={false}
         minHeight={minResizeHeight}
       >
-        <div 
+        <div
           className="w-full h-full py-1.5 px-1.5"
           style={{
             border: element.borderWidth && element.borderWidth > 0
               ? `${element.borderWidth}px solid ${element.borderColor}`
               : '1px solid #e5e7eb',
-            backgroundColor: element.fillColor && element.fillColor !== 'transparent' 
-              ? element.fillColor 
+            backgroundColor: element.fillColor && element.fillColor !== 'transparent'
+              ? element.fillColor
               : 'white',
             minHeight: '20px',
-            overflow: 'hidden' // Allow manual resize below content height
+            overflow: 'auto' // Allow scrolling if content exceeds container
           }}
         >
           <div
             ref={contentEditableRef}
             contentEditable
+            onClick={handleClick}
             onInput={handleInput}
             onMouseDown={handleMouseDown}
             onKeyDown={handleKeyDown}
@@ -704,69 +774,16 @@ export function TextElementComponent({
             onMouseUp={handleTextSelect}
             onKeyUp={handleTextSelect}
             data-placeholder="Type here..."
-            className="w-full h-full outline-none"
+            className="w-full outline-none"
             style={{
               cursor: isSelected ? 'text' : 'default',
-              overflow: 'hidden' // Allow content to be clipped when manually resized
+              minHeight: '100%' // Take at least full parent height
             }}
             suppressContentEditableWarning
           />
         </div>
       </ResizableElement>
 
-      {/* Text Selection Floating Buttons - Format and Hyperlink */}
-      {hasTextSelection && !showTextFormatPanel && !showHyperlinkMenu && (
-        <div
-          className="fixed z-50 flex gap-2"
-          style={{
-            left: selectionPosition.x,
-            top: selectionPosition.y,
-            transform: 'translateX(-50%)'
-          }}
-        >
-          <Button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowTextFormatPanel(true);
-              setShowHyperlinkMenu(false);
-            }}
-            variant="outline"
-            size="sm"
-            className="gap-2 h-8 bg-white shadow-lg"
-          >
-            <Type className="h-4 w-4" />
-            Format
-          </Button>
-          <Button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowHyperlinkMenu(true);
-              setShowTextFormatPanel(false);
-            }}
-            variant="outline"
-            size="sm"
-            className="gap-2 h-8 bg-white shadow-lg"
-          >
-            <Link className="h-4 w-4" />
-            Hyperlink
-          </Button>
-        </div>
-      )}
-
-      {/* Text Format Panel */}
-      {showTextFormatPanel && (
-        <TextFormatPanel
-          position={selectionPosition}
-          selectedText={selectedText}
-          onClose={() => {
-            setShowTextFormatPanel(false);
-            setHasTextSelection(false);
-          }}
-          onApply={(format) => {
-            applyFormat(format);
-          }}
-        />
-      )}
 
       {/* Hyperlink Menu */}
       {showHyperlinkMenu && (
@@ -795,71 +812,86 @@ export function TextElementComponent({
         />
       )}
 
-      {/* Image Resize Handles */}
-      {selectedImage && (
-        <div
-          className="fixed z-50 pointer-events-none"
-          style={{
-            left: selectedImage.getBoundingClientRect().left,
-            top: selectedImage.getBoundingClientRect().top,
-            width: selectedImage.offsetWidth,
-            height: selectedImage.offsetHeight,
-            border: '2px solid #3b82f6',
-            boxSizing: 'border-box'
-          }}
-        >
-          {/* Southeast corner handle */}
-          <div
-            className="absolute bg-blue-500 cursor-se-resize pointer-events-auto"
-            style={{
-              width: '8px',
-              height: '8px',
-              bottom: '-4px',
-              right: '-4px',
-              border: '1px solid white'
-            }}
-            onMouseDown={(e) => handleImageResizeStart(e, 'se')}
-          />
+      {/* Image Resize Handles - Rendered in Portal */}
+      {selectedImage && createPortal(
+        (() => {
+          const rect = selectedImage.getBoundingClientRect();
+          return (
+            <div
+              className="fixed z-50"
+              style={{
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+                border: '2px solid #3b82f6',
+                boxSizing: 'border-box',
+                pointerEvents: 'none'
+              }}
+            >
+              {/* Southeast corner handle */}
+              <div
+                className="absolute bg-blue-500"
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  bottom: '-6px',
+                  right: '-6px',
+                  border: '2px solid white',
+                  cursor: 'se-resize',
+                  pointerEvents: 'auto'
+                }}
+                onMouseDown={(e) => handleImageResizeStart(e, 'se')}
+              />
 
-          {/* Southwest corner handle */}
-          <div
-            className="absolute bg-blue-500 cursor-sw-resize pointer-events-auto"
-            style={{
-              width: '8px',
-              height: '8px',
-              bottom: '-4px',
-              left: '-4px',
-              border: '1px solid white'
-            }}
-            onMouseDown={(e) => handleImageResizeStart(e, 'sw')}
-          />
+              {/* Southwest corner handle */}
+              <div
+                className="absolute bg-blue-500"
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  bottom: '-6px',
+                  left: '-6px',
+                  border: '2px solid white',
+                  cursor: 'sw-resize',
+                  pointerEvents: 'auto'
+                }}
+                onMouseDown={(e) => handleImageResizeStart(e, 'sw')}
+              />
 
-          {/* Northeast corner handle */}
-          <div
-            className="absolute bg-blue-500 cursor-ne-resize pointer-events-auto"
-            style={{
-              width: '8px',
-              height: '8px',
-              top: '-4px',
-              right: '-4px',
-              border: '1px solid white'
-            }}
-            onMouseDown={(e) => handleImageResizeStart(e, 'ne')}
-          />
+              {/* Northeast corner handle */}
+              <div
+                className="absolute bg-blue-500"
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  top: '-6px',
+                  right: '-6px',
+                  border: '2px solid white',
+                  cursor: 'ne-resize',
+                  pointerEvents: 'auto'
+                }}
+                onMouseDown={(e) => handleImageResizeStart(e, 'ne')}
+              />
 
-          {/* Northwest corner handle */}
-          <div
-            className="absolute bg-blue-500 cursor-nw-resize pointer-events-auto"
-            style={{
-              width: '8px',
-              height: '8px',
-              top: '-4px',
-              left: '-4px',
-              border: '1px solid white'
-            }}
-            onMouseDown={(e) => handleImageResizeStart(e, 'nw')}
-          />
-        </div>
+              {/* Northwest corner handle */}
+              <div
+                className="absolute bg-blue-500"
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  top: '-6px',
+                  left: '-6px',
+                  border: '2px solid white',
+                  cursor: 'nw-resize',
+                  pointerEvents: 'auto'
+                }}
+                onMouseDown={(e) => handleImageResizeStart(e, 'nw')}
+              />
+            </div>
+          );
+        })(),
+        document.body
       )}
     </>
   );

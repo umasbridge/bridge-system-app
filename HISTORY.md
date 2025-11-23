@@ -321,3 +321,59 @@
 
 ---
 
+
+## 2025-11-22 20:40 IST
+**Session:** Image resize + hyperlink UX improvements
+**Thread Context:** 125K tokens (continuation thread)
+**Branch:** master
+
+**CLAUDE.md Changes:**
+- No changes (no fundamental architecture modifications)
+
+**HANDOVER.md Changes:**
+- Replaced entirely: New handover for image resize completion + hyperlink UX streamlining
+- Updated: Session metadata (20:40 IST, 3.5 hours, 125K tokens)
+- Updated: Current status - image resize COMPLETE, hyperlink integrated into side panel
+- Updated: Critical context - container auto-fit logic, selected text propagation pattern
+- Added: 4 decisions with detailed rationale (UX simplification, workspace name auto-fill, bidirectional resize, text propagation)
+- Updated: Files modified - comprehensive changes across 3 files
+
+**Key Decisions:**
+- Integrated hyperlink controls into side format panel (removed floating buttons for cleaner UX)
+- Workspace name auto-fills from selected text but remains editable
+- Container resizes bidirectionally (removed Math.max minimums preventing shrink)
+- Selected text propagated via useEffect for reactive side panel updates
+
+**Work Completed:**
+- FIXED image resize container auto-fit:
+  - Root cause: Math.max constraints prevented container from shrinking below minimums (100px width, 34px height)
+  - Solution: Removed minimums - container now sizes exactly to image + padding + border
+  - Tested: Container expands when image enlarged, shrinks when image reduced
+- STREAMLINED hyperlink UX:
+  - Removed redundant floating Format/Hyperlink buttons (user feedback: "do we really need...")
+  - Integrated hyperlink section into side panel TextFormatPanel
+  - Click Link button → section expands inline with workspace name, link type buttons, apply
+  - Workspace name pre-fills from selected text, remains editable
+- FIXED selected text propagation:
+  - Root cause: Side panel hardcoded selectedText="" so workspace name always empty
+  - Solution: useEffect in TextElement notifies parent on selection change
+  - WorkspaceEditor tracks in state, passes to TextFormatPanel
+  - preventDefault modified to allow INPUT/SELECT/BUTTON focus (was blocking all)
+
+**Files Modified:**
+- src/components/workspace-system/TextElement.tsx (8 changes - selection propagation, resize logic, UI cleanup)
+- src/components/workspace-system/TextFormatPanel.tsx (6 changes - hyperlink section, input handling)
+- src/components/workspace-system/WorkspaceEditor.tsx (4 changes - state tracking, prop passing)
+
+**Session Learnings:**
+- User prefers consolidated UI over multiple floating panels (explicit feedback)
+- Container resize must be bidirectional - users expect shrinking as well as growing
+- preventDefault on panels must check element type to allow form inputs
+- Selected text propagation requires reactive updates (useEffect) not just initial pass
+
+**Next Session:**
+- Continue with remaining MVP features (persistence already complete)
+- Consider merging feature/auth-dashboard branch (9 commits ready for review)
+- UI polish and testing
+
+---

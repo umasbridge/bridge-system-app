@@ -84,7 +84,9 @@ export function WorkspaceEditor({
   const undoTimerRef = useRef<NodeJS.Timeout | null>(null);
   const tableRowsRef = useRef<Map<string, RowData[]>>(new Map());
   const textElementApplyFormatRef = useRef<((format: any) => void) | null>(null);
+  const textElementApplyHyperlinkRef = useRef<((workspaceName: string, linkType: 'comment' | 'new-page') => void) | null>(null);
   const cellApplyFormatRef = useRef<((format: any) => void) | null>(null);
+  const [textElementSelectedText, setTextElementSelectedText] = useState<string>('');
 
   // Load elements from DB on mount
   useEffect(() => {
@@ -516,18 +518,25 @@ export function WorkspaceEditor({
                 onDelete={() => handleDelete(element.id)}
                 existingWorkspaces={existingWorkspaces}
                 onNavigateToWorkspace={onNavigateToWorkspace}
-                onFocusChange={(isFocused, applyFormatFn) => {
+                onFocusChange={(isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
                   if (isFocused) {
                     // Entering edit mode - clear selection
                     setSelectedId(null);
                     setFocusedTextElementId(element.id);
-                    // Store the apply format function
+                    // Store the apply format and hyperlink functions
                     if (applyFormatFn) {
                       textElementApplyFormatRef.current = applyFormatFn;
                     }
+                    if (applyHyperlinkFn) {
+                      textElementApplyHyperlinkRef.current = applyHyperlinkFn;
+                    }
+                    // Update selected text
+                    setTextElementSelectedText(selectedText || '');
                   } else if (focusedTextElementId === element.id) {
                     setFocusedTextElementId(null);
                     textElementApplyFormatRef.current = null;
+                    textElementApplyHyperlinkRef.current = null;
+                    setTextElementSelectedText('');
                   }
                 }}
               />
@@ -637,11 +646,16 @@ export function WorkspaceEditor({
           >
             <TextFormatPanel
               position={{ x: 0, y: 0 }}
-              selectedText=""
+              selectedText={textElementSelectedText}
               onClose={() => setFocusedTextElementId(null)}
               onApply={(format) => {
                 if (textElementApplyFormatRef.current) {
                   textElementApplyFormatRef.current(format);
+                }
+              }}
+              onApplyHyperlink={(workspaceName, linkType) => {
+                if (textElementApplyHyperlinkRef.current) {
+                  textElementApplyHyperlinkRef.current(workspaceName, linkType);
                 }
               }}
               isSidePanel={true}

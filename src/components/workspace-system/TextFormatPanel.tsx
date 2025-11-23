@@ -1,13 +1,15 @@
-import { useState } from 'react';
-import { X, Bold, Italic, Underline, Strikethrough, Highlighter, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, IndentIncrease, IndentDecrease } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Bold, Italic, Underline, Strikethrough, Highlighter, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, IndentIncrease, IndentDecrease, Link2, MessageSquare, FileText } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
+import { Input } from '../ui/input';
 
 interface TextFormatPanelProps {
   position: { x: number; y: number };
   selectedText: string;
   onClose: () => void;
   onApply: (format: TextFormat) => void;
+  onApplyHyperlink?: (workspaceName: string, linkType: 'comment' | 'new-page') => void;
   isSidePanel?: boolean;
 }
 
@@ -43,7 +45,7 @@ const FONTS = [
 
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
 
-export function TextFormatPanel({ position, selectedText, onClose, onApply, isSidePanel = false }: TextFormatPanelProps) {
+export function TextFormatPanel({ position, selectedText, onClose, onApply, onApplyHyperlink, isSidePanel = false }: TextFormatPanelProps) {
   const [format, setFormat] = useState<TextFormat>({
     color: '#000000',
     backgroundColor: 'transparent',
@@ -55,6 +57,17 @@ export function TextFormatPanel({ position, selectedText, onClose, onApply, isSi
     strikethrough: false,
     textAlign: 'left'
   });
+
+  const [showHyperlinkSection, setShowHyperlinkSection] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState(selectedText || '');
+  const [linkType, setLinkType] = useState<'comment' | 'new-page' | null>(null);
+
+  // Update workspace name when selected text changes
+  useEffect(() => {
+    if (selectedText) {
+      setWorkspaceName(selectedText);
+    }
+  }, [selectedText]);
 
   const handleFormatChange = (newFormat: Partial<TextFormat>) => {
     const updatedFormat = { ...format, ...newFormat };
@@ -80,7 +93,13 @@ export function TextFormatPanel({ position, selectedText, onClose, onApply, isSi
       className={containerClass}
       style={containerStyle}
       onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.preventDefault()}
+      onMouseDown={(e) => {
+        // Only prevent default on non-input elements to allow typing
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT' && target.tagName !== 'BUTTON') {
+          e.preventDefault();
+        }
+      }}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
@@ -92,15 +111,88 @@ export function TextFormatPanel({ position, selectedText, onClose, onApply, isSi
             </p>
           )}
         </div>
-        <Button
-          onClick={onClose}
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex gap-1">
+          {onApplyHyperlink && (
+            <Button
+              onClick={() => {
+                // When opening hyperlink section, refresh workspace name from selected text
+                if (!showHyperlinkSection && selectedText) {
+                  setWorkspaceName(selectedText);
+                }
+                setShowHyperlinkSection(!showHyperlinkSection);
+              }}
+              variant={showHyperlinkSection ? "default" : "outline"}
+              size="sm"
+              className="h-8 gap-1"
+              title="Add Hyperlink"
+            >
+              <Link2 className="h-4 w-4" />
+              Link
+            </Button>
+          )}
+          <Button
+            onClick={onClose}
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
+
+      {/* Hyperlink Section */}
+      {showHyperlinkSection && onApplyHyperlink && (
+        <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 space-y-3">
+          <div>
+            <Label className="text-xs mb-1 block">Workspace Name</Label>
+            <Input
+              type="text"
+              value={workspaceName}
+              onChange={(e) => setWorkspaceName(e.target.value)}
+              placeholder="Enter workspace name"
+              className="w-full"
+            />
+          </div>
+          <div>
+            <Label className="text-xs mb-1 block">Link Type</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                onClick={() => setLinkType('comment')}
+                variant={linkType === 'comment' ? 'default' : 'outline'}
+                size="sm"
+                className="w-full gap-2"
+              >
+                <MessageSquare className="h-4 w-4" />
+                Comment
+              </Button>
+              <Button
+                onClick={() => setLinkType('new-page')}
+                variant={linkType === 'new-page' ? 'default' : 'outline'}
+                size="sm"
+                className="w-full gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                New Page
+              </Button>
+            </div>
+          </div>
+          <Button
+            onClick={() => {
+              if (workspaceName.trim() && linkType) {
+                onApplyHyperlink(workspaceName.trim(), linkType);
+                setWorkspaceName('');
+                setLinkType(null);
+                setShowHyperlinkSection(false);
+              }
+            }}
+            disabled={!workspaceName.trim() || !linkType}
+            className="w-full"
+          >
+            Apply Hyperlink
+          </Button>
+        </div>
+      )}
 
       {/* Font Family */}
       <div className="mb-3">
