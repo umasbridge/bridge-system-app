@@ -27,7 +27,14 @@ interface SystemsTableRowProps {
   meaningWidth: number;
   onUpdateMeaningWidth: (width: number) => void;
   gridlines?: GridlineOptions;
-  onCellFocusChange?: (rowId: string, column: 'bid' | 'meaning', isFocused: boolean, applyFormatFn?: (format: any) => void) => void;
+  onCellFocusChange?: (
+    rowId: string,
+    column: 'bid' | 'meaning',
+    isFocused: boolean,
+    applyFormatFn?: (format: any) => void,
+    applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'new-page') => void,
+    selectedText?: string
+  ) => void;
   workspaceId?: string;
   elementId?: string;
 }
@@ -183,9 +190,9 @@ export function SystemsTableRow({
                 placeholder="Bid"
                 minHeight={20}
                 columnWidth={bidColumnWidth}
-                onFocusChange={(isFocused, applyFormatFn) => {
+                onFocusChange={(isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
                   if (onCellFocusChange) {
-                    onCellFocusChange(row.id, 'bid', isFocused, applyFormatFn);
+                    onCellFocusChange(row.id, 'bid', isFocused, applyFormatFn, applyHyperlinkFn, selectedText);
                   }
                 }}
                 workspaceId={workspaceId}
@@ -271,9 +278,9 @@ export function SystemsTableRow({
             placeholder="Meaning"
             minHeight={20}
             columnWidth={actualMeaningWidth}
-            onFocusChange={(isFocused, applyFormatFn) => {
+            onFocusChange={(isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
               if (onCellFocusChange) {
-                onCellFocusChange(row.id, 'meaning', isFocused, applyFormatFn);
+                onCellFocusChange(row.id, 'meaning', isFocused, applyFormatFn, applyHyperlinkFn, selectedText);
               }
             }}
             workspaceId={workspaceId}

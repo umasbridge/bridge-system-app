@@ -14,7 +14,12 @@ interface RichTextCellProps {
   placeholder?: string;
   minHeight?: number;
   columnWidth?: number;
-  onFocusChange?: (isFocused: boolean, applyFormatFn?: (format: any) => void) => void;
+  onFocusChange?: (
+    isFocused: boolean,
+    applyFormatFn?: (format: any) => void,
+    applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'new-page') => void,
+    selectedText?: string
+  ) => void;
   workspaceId?: string;
   elementId?: string;
 }
@@ -223,9 +228,9 @@ export function RichTextCell({
 
     setIsFocused(true);
 
-    // Notify parent that this cell is focused and pass the applyFormat function
+    // Notify parent that this cell is focused and pass the applyFormat and applyHyperlink functions
     if (onFocusChange) {
-      onFocusChange(true, applyFormat);
+      onFocusChange(true, applyFormat, applyHyperlink, selectedText);
     }
   };
 

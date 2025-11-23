@@ -86,7 +86,9 @@ export function WorkspaceEditor({
   const textElementApplyFormatRef = useRef<((format: any) => void) | null>(null);
   const textElementApplyHyperlinkRef = useRef<((workspaceName: string, linkType: 'comment' | 'new-page') => void) | null>(null);
   const cellApplyFormatRef = useRef<((format: any) => void) | null>(null);
+  const cellApplyHyperlinkRef = useRef<((workspaceName: string, linkType: 'comment' | 'new-page') => void) | null>(null);
   const [textElementSelectedText, setTextElementSelectedText] = useState<string>('');
+  const [cellSelectedText, setCellSelectedText] = useState<string>('');
 
   // Load elements from DB on mount
   useEffect(() => {
@@ -485,15 +487,23 @@ export function WorkspaceEditor({
                     onMeaningWidthChange={(meaningWidth) => {
                       elementOperations.update(element.id, { meaningWidth } as Partial<DBWorkspaceElement>);
                     }}
-                    onCellFocusChange={(rowId, column, isFocused, applyFormatFn) => {
+                    onCellFocusChange={(rowId, column, isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
                       if (isFocused) {
                         setFocusedCellId({ tableId: element.id, rowId, column });
                         if (applyFormatFn) {
                           cellApplyFormatRef.current = applyFormatFn;
                         }
+                        if (applyHyperlinkFn) {
+                          cellApplyHyperlinkRef.current = applyHyperlinkFn;
+                        }
+                        if (selectedText) {
+                          setCellSelectedText(selectedText);
+                        }
                       } else if (focusedCellId?.tableId === element.id && focusedCellId?.rowId === rowId && focusedCellId?.column === column) {
                         setFocusedCellId(null);
                         cellApplyFormatRef.current = null;
+                        cellApplyHyperlinkRef.current = null;
+                        setCellSelectedText('');
                       }
                     }}
                     workspaceId={workspaceId}
@@ -673,14 +683,21 @@ export function WorkspaceEditor({
           >
             <TextFormatPanel
               position={{ x: 0, y: 0 }}
-              selectedText=""
+              selectedText={cellSelectedText}
               onClose={() => {
                 setFocusedCellId(null);
                 cellApplyFormatRef.current = null;
+                cellApplyHyperlinkRef.current = null;
+                setCellSelectedText('');
               }}
               onApply={(format) => {
                 if (cellApplyFormatRef.current) {
                   cellApplyFormatRef.current(format);
+                }
+              }}
+              onApplyHyperlink={(workspaceName, linkType) => {
+                if (cellApplyHyperlinkRef.current) {
+                  cellApplyHyperlinkRef.current(workspaceName, linkType);
                 }
               }}
               isSidePanel={true}

@@ -28,7 +28,14 @@ interface SystemsTableProps {
   onRowsChange?: (rows: RowData[]) => void;
   onLevelWidthsChange?: (levelWidths: { [level: number]: number }) => void;
   onMeaningWidthChange?: (meaningWidth: number) => void;
-  onCellFocusChange?: (rowId: string, column: 'bid' | 'meaning', isFocused: boolean, applyFormatFn?: (format: any) => void) => void;
+  onCellFocusChange?: (
+    rowId: string,
+    column: 'bid' | 'meaning',
+    isFocused: boolean,
+    applyFormatFn?: (format: any) => void,
+    applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'new-page') => void,
+    selectedText?: string
+  ) => void;
   workspaceId?: string;
   elementId?: string;
 }
