@@ -458,8 +458,8 @@ export function RichTextCell({
                                  format.fontSize || format.bold || format.italic ||
                                  format.underline || format.strikethrough;
 
-    // Handle text alignment separately
-    if (format.textAlign) {
+    // Handle text alignment separately - but skip if we have inline formatting to apply
+    if (format.textAlign && !hasInlineFormatting) {
       const range = workingRange;
       let node = range.startContainer;
 
