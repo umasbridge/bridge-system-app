@@ -6,6 +6,8 @@ import { BaseElement } from '../element-look-and-feel/types';
 import { TextElementFormatPanel } from './TextElementFormatPanel';
 import { WorkspaceHyperlinkMenu } from './WorkspaceHyperlinkMenu';
 import { TextFormatPanel } from './TextFormatPanel';
+import { imageOperations, ImageBlob } from '../../db/database';
+import { Upload } from 'lucide-react';
 
 export interface TextElement extends BaseElement {
   type: 'text';
@@ -50,6 +52,48 @@ export function TextElementComponent({
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
   const [imageResizing, setImageResizing] = useState(false);
   const imageResizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
+  const [imageObjectUrls, setImageObjectUrls] = useState<Map<string, string>>(new Map());
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  // Load images from IndexedDB and create object URLs
+  useEffect(() => {
+    const loadImages = async () => {
+      if (!element.id) return;
+
+      // Get all images for this element
+      const images = await imageOperations.getByElementId(element.id);
+
+      // Create object URLs for each image
+      const urlMap = new Map<string, string>();
+      images.forEach(img => {
+        const objectUrl = URL.createObjectURL(img.blob);
+        urlMap.set(img.id, objectUrl);
+      });
+
+      setImageObjectUrls(urlMap);
+    };
+
+    loadImages();
+
+    // Cleanup object URLs on unmount
+    return () => {
+      imageObjectUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [element.id, element.htmlContent]);
+
+  // Update image src attributes when object URLs change
+  useEffect(() => {
+    if (!contentEditableRef.current) return;
+
+    const images = contentEditableRef.current.querySelectorAll('img[data-image-id]');
+    images.forEach((img) => {
+      const imageId = img.getAttribute('data-image-id');
+      if (imageId && imageObjectUrls.has(imageId)) {
+        (img as HTMLImageElement).src = imageObjectUrls.get(imageId)!;
+      }
+    });
+  }, [imageObjectUrls]);
 
   // Notify parent when selected text changes (for side panel)
   useEffect(() => {
@@ -179,7 +223,7 @@ export function TextElementComponent({
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+  const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
 
@@ -193,51 +237,147 @@ export function TextElementComponent({
         const file = item.getAsFile();
         if (!file) continue;
 
-        // Convert image to base64 data URL
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const dataUrl = event.target?.result as string;
-
-          // Insert image as data URL
-          if (contentEditableRef.current) {
-            const img = document.createElement('img');
-            img.src = dataUrl;
-            img.style.width = '300px'; // Default initial width
-            img.style.display = 'block';
-            img.style.margin = '8px 0';
-            img.alt = file.name;
-
-            // Insert at cursor position
-            const selection = window.getSelection();
-            if (selection && selection.rangeCount > 0) {
-              const range = selection.getRangeAt(0);
-              range.deleteContents();
-              range.insertNode(img);
-
-              // Move cursor after image
-              range.setStartAfter(img);
-              range.setEndAfter(img);
-              selection.removeAllRanges();
-              selection.addRange(range);
-            } else {
-              // Fallback: append to end
-              contentEditableRef.current.appendChild(img);
-            }
-
-            // Update content
-            const htmlContent = contentEditableRef.current.innerHTML;
-            const textContent = contentEditableRef.current.textContent || '';
-            onUpdate({
-              content: textContent,
-              htmlContent: htmlContent
-            });
-          }
-        };
-        reader.readAsDataURL(file);
+        // Insert image using IndexedDB
+        await insertImageFromFile(file);
 
         return; // Only handle first image
       }
     }
+  };
+
+  // Helper function to insert image from File
+  const insertImageFromFile = async (file: File) => {
+    if (!contentEditableRef.current) return;
+
+    // Generate unique image ID
+    const imageId = Math.random().toString(36).substring(7);
+
+    // Get image dimensions
+    const dimensions = await getImageDimensions(file);
+
+    // Store image in IndexedDB
+    const imageBlob: ImageBlob = {
+      id: imageId,
+      workspaceId: element.workspaceId || '',
+      elementId: element.id,
+      blob: file,
+      fileName: file.name,
+      mimeType: file.type,
+      width: dimensions.width,
+      height: dimensions.height,
+      createdAt: Date.now()
+    };
+
+    await imageOperations.create(imageBlob);
+
+    // Create object URL for immediate display
+    const objectUrl = URL.createObjectURL(file);
+
+    // Update object URL map
+    setImageObjectUrls(prev => {
+      const newMap = new Map(prev);
+      newMap.set(imageId, objectUrl);
+      return newMap;
+    });
+
+    // Insert img element with data-image-id
+    const img = document.createElement('img');
+    img.setAttribute('data-image-id', imageId);
+    img.src = objectUrl;
+    img.style.width = '300px'; // Default initial width
+    img.style.display = 'block';
+    img.style.margin = '8px 0';
+    img.alt = file.name;
+
+    // Insert at cursor position
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(img);
+
+      // Move cursor after image
+      range.setStartAfter(img);
+      range.setEndAfter(img);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      // Fallback: append to end
+      contentEditableRef.current.appendChild(img);
+    }
+
+    // Update content
+    const htmlContent = contentEditableRef.current.innerHTML;
+    const textContent = contentEditableRef.current.textContent || '';
+    onUpdate({
+      content: textContent,
+      htmlContent: htmlContent
+    });
+  };
+
+  // Helper to get image dimensions
+  const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        resolve({ width: img.width, height: img.height });
+        URL.revokeObjectURL(img.src);
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    // Process first image file
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        await insertImageFromFile(file);
+        return; // Only handle first image
+      }
+    }
+  };
+
+  // Handle upload button click
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // Process first image file
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        await insertImageFromFile(file);
+        break; // Only handle first image
+      }
+    }
+
+    // Reset input to allow selecting the same file again
+    e.target.value = '';
   };
 
   // Handle image click for selection
@@ -749,7 +889,7 @@ export function TextElementComponent({
         minHeight={minResizeHeight}
       >
         <div
-          className="w-full h-full py-1.5 px-1.5"
+          className="w-full h-full py-1.5 px-1.5 relative"
           style={{
             border: element.borderWidth && element.borderWidth > 0
               ? `${element.borderWidth}px solid ${element.borderColor}`
@@ -760,7 +900,38 @@ export function TextElementComponent({
             minHeight: '20px',
             overflow: 'auto' // Allow scrolling if content exceeds container
           }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
         >
+          {/* Drag overlay */}
+          {isDraggingOver && (
+            <div className="absolute inset-0 bg-blue-50 border-2 border-dashed border-blue-400 flex items-center justify-center z-10">
+              <p className="text-blue-600 font-medium">Drop image here</p>
+            </div>
+          )}
+
+          {/* Upload button - shown when editing */}
+          {isEditMode && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleUploadClick}
+              className="absolute top-1 right-1 z-20 opacity-70 hover:opacity-100"
+            >
+              <Upload className="h-4 w-4" />
+            </Button>
+          )}
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+
           <div
             ref={contentEditableRef}
             contentEditable

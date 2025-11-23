@@ -29,6 +29,8 @@ interface SystemsTableProps {
   onLevelWidthsChange?: (levelWidths: { [level: number]: number }) => void;
   onMeaningWidthChange?: (meaningWidth: number) => void;
   onCellFocusChange?: (rowId: string, column: 'bid' | 'meaning', isFocused: boolean, applyFormatFn?: (format: any) => void) => void;
+  workspaceId?: string;
+  elementId?: string;
 }
 
 export function SystemsTable({
@@ -40,7 +42,9 @@ export function SystemsTable({
   onRowsChange,
   onLevelWidthsChange,
   onMeaningWidthChange,
-  onCellFocusChange
+  onCellFocusChange,
+  workspaceId,
+  elementId
 }: SystemsTableProps) {
   const [rows, setRows] = useState<RowData[]>(
     initialRows || [
@@ -341,6 +345,8 @@ export function SystemsTable({
             onUpdateMeaningWidth={updateMeaningWidth}
             gridlines={gridlines}
             onCellFocusChange={onCellFocusChange}
+            workspaceId={workspaceId}
+            elementId={elementId}
           />
         ))}
       </div>

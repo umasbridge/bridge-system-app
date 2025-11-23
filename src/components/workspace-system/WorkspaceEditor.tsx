@@ -496,6 +496,8 @@ export function WorkspaceEditor({
                         cellApplyFormatRef.current = null;
                       }
                     }}
+                    workspaceId={workspaceId}
+                    elementId={element.id}
                   />
                 </div>
               </ResizableElement>

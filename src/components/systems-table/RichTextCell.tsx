@@ -1,10 +1,11 @@
 import { useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, Type } from 'lucide-react';
+import { Link, Type, Upload } from 'lucide-react';
 import { Button } from '../ui/button';
-import { TextFormatPanel } from '../embedded-content/TextFormatPanel';
+import { TextFormatPanel } from '../workspace-system/TextFormatPanel';
 import { WorkspaceHyperlinkMenu } from './WorkspaceHyperlinkMenu';
 import { useWorkspaceContext } from '../workspace-system/WorkspaceSystem';
+import { imageOperations, ImageBlob } from '../../db/database';
 
 interface RichTextCellProps {
   value: string;
@@ -14,6 +15,8 @@ interface RichTextCellProps {
   minHeight?: number;
   columnWidth?: number;
   onFocusChange?: (isFocused: boolean, applyFormatFn?: (format: any) => void) => void;
+  workspaceId?: string;
+  elementId?: string;
 }
 
 export function RichTextCell({
@@ -23,6 +26,8 @@ export function RichTextCell({
   placeholder = '',
   minHeight = 20,
   onFocusChange,
+  workspaceId,
+  elementId,
 }: RichTextCellProps) {
   const contentEditableRef = useRef<HTMLDivElement>(null);
   const [hasTextSelection, setHasTextSelection] = useState(false);
@@ -33,6 +38,11 @@ export function RichTextCell({
   const [showHyperlinkMenu, setShowHyperlinkMenu] = useState(false);
   const isInternalUpdate = useRef(false);
   const isClickingLink = useRef(false);
+  const [imageObjectUrls, setImageObjectUrls] = useState<Map<string, string>>(new Map());
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
 
   // Try to get workspace context, but don't fail if not available
   let workspaceContext: ReturnType<typeof useWorkspaceContext> | null = null;
@@ -41,6 +51,41 @@ export function RichTextCell({
   } catch (e) {
     // Context not available - hyperlink feature will be limited
   }
+
+  // Load images from IndexedDB and create object URLs
+  useEffect(() => {
+    const loadImages = async () => {
+      if (!elementId) return;
+
+      const images = await imageOperations.getByElementId(elementId);
+      const urlMap = new Map<string, string>();
+      images.forEach(img => {
+        const objectUrl = URL.createObjectURL(img.blob);
+        urlMap.set(img.id, objectUrl);
+      });
+
+      setImageObjectUrls(urlMap);
+    };
+
+    loadImages();
+
+    return () => {
+      imageObjectUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [elementId, htmlValue]);
+
+  // Update image src attributes when object URLs change
+  useEffect(() => {
+    if (!contentEditableRef.current) return;
+
+    const images = contentEditableRef.current.querySelectorAll('img[data-image-id]');
+    images.forEach((img) => {
+      const imageId = img.getAttribute('data-image-id');
+      if (imageId && imageObjectUrls.has(imageId)) {
+        (img as HTMLImageElement).src = imageObjectUrls.get(imageId)!;
+      }
+    });
+  }, [imageObjectUrls]);
 
   // Initialize content on mount
   useEffect(() => {
@@ -176,6 +221,8 @@ export function RichTextCell({
       return;
     }
 
+    setIsFocused(true);
+
     // Notify parent that this cell is focused and pass the applyFormat function
     if (onFocusChange) {
       onFocusChange(true, applyFormat);
@@ -189,19 +236,21 @@ export function RichTextCell({
       e.preventDefault();
       return;
     }
-    
+
     // Don't blur if clicking on format panel or hyperlink menu
     const relatedTarget = e.relatedTarget as HTMLElement;
-    if (relatedTarget?.closest('[data-text-format-panel]') || 
+    if (relatedTarget?.closest('[data-text-format-panel]') ||
         relatedTarget?.closest('[data-hyperlink-menu]')) {
       return;
     }
-    
+
+    setIsFocused(false);
+
     // Notify parent that this cell is no longer focused
     if (onFocusChange) {
       onFocusChange(false);
     }
-    
+
     setTimeout(() => {
       setHasTextSelection(false);
     }, 200);
@@ -234,23 +283,216 @@ export function RichTextCell({
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+  const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    // Check if clipboard contains image files
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+
+      if (item.type.indexOf('image') !== -1) {
+        e.preventDefault(); // Prevent default paste behavior for images
+
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        await insertImageFromFile(file);
+        return; // Only handle first image
+      }
+    }
+
     // For text paste, prevent default and insert as plain text
     e.preventDefault();
     const text = e.clipboardData.getData('text/plain');
     document.execCommand('insertText', false, text);
   };
 
-  const applyFormat = (format: any) => {
-    if (!savedSelection || !contentEditableRef.current) return;
+  // Helper function to insert image from File
+  const insertImageFromFile = async (file: File) => {
+    if (!contentEditableRef.current || !workspaceId || !elementId) return;
 
-    // Restore the selection
-    restoreSelection(savedSelection);
-    
-    // Create a span with the formatting
+    const imageId = Math.random().toString(36).substring(7);
+    const dimensions = await getImageDimensions(file);
+
+    const imageBlob: ImageBlob = {
+      id: imageId,
+      workspaceId,
+      elementId,
+      blob: file,
+      fileName: file.name,
+      mimeType: file.type,
+      width: dimensions.width,
+      height: dimensions.height,
+      createdAt: Date.now()
+    };
+
+    await imageOperations.create(imageBlob);
+
+    const objectUrl = URL.createObjectURL(file);
+    setImageObjectUrls(prev => {
+      const newMap = new Map(prev);
+      newMap.set(imageId, objectUrl);
+      return newMap;
+    });
+
+    const img = document.createElement('img');
+    img.setAttribute('data-image-id', imageId);
+    img.src = objectUrl;
+    img.style.maxWidth = '100%';
+    img.style.display = 'block';
+    img.style.margin = '4px 0';
+    img.alt = file.name;
+
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(img);
+      range.setStartAfter(img);
+      range.setEndAfter(img);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      contentEditableRef.current.appendChild(img);
+    }
+
+    const htmlContent = contentEditableRef.current.innerHTML;
+    const textContent = contentEditableRef.current.textContent || '';
+    onChange(textContent, htmlContent);
+  };
+
+  const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        resolve({ width: img.width, height: img.height });
+        URL.revokeObjectURL(img.src);
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        await insertImageFromFile(file);
+        return;
+      }
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        await insertImageFromFile(file);
+        break;
+      }
+    }
+
+    e.target.value = '';
+  };
+
+  const applyFormat = (format: any) => {
+    if (!contentEditableRef.current) return;
+
+    contentEditableRef.current.focus();
+
+    let workingRange: Range | null = savedSelection;
+
+    if (!workingRange) {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        workingRange = selection.getRangeAt(0);
+        if (selection.toString().length === 0) {
+          workingRange = document.createRange();
+          workingRange.selectNodeContents(contentEditableRef.current);
+          selection.removeAllRanges();
+          selection.addRange(workingRange);
+        }
+      } else {
+        workingRange = document.createRange();
+        workingRange.selectNodeContents(contentEditableRef.current);
+        const selection = window.getSelection();
+        if (selection) {
+          selection.removeAllRanges();
+          selection.addRange(workingRange);
+        }
+      }
+    } else {
+      restoreSelection(workingRange);
+    }
+
+    if (!workingRange) return;
+
+    const hasInlineFormatting = format.color || format.backgroundColor || format.fontFamily ||
+                                 format.fontSize || format.bold || format.italic ||
+                                 format.underline || format.strikethrough;
+
+    // Handle text alignment separately
+    if (format.textAlign) {
+      const range = workingRange;
+      let node = range.startContainer;
+
+      while (node && node !== contentEditableRef.current) {
+        if (node instanceof HTMLElement &&
+            (node.tagName === 'DIV' || node.tagName === 'P' || node.tagName === 'H1' ||
+             node.tagName === 'H2' || node.tagName === 'H3' || node.tagName === 'H4' ||
+             node.tagName === 'H5' || node.tagName === 'H6')) {
+          (node as HTMLElement).style.textAlign = format.textAlign;
+          break;
+        }
+        node = node.parentNode;
+      }
+
+      if (!node || node === contentEditableRef.current) {
+        const div = document.createElement('div');
+        div.style.textAlign = format.textAlign;
+        const contents = range.extractContents();
+        div.appendChild(contents);
+        range.insertNode(div);
+      }
+
+      const htmlContent = contentEditableRef.current.innerHTML;
+      const textContent = contentEditableRef.current.textContent || '';
+      onChange(textContent, htmlContent);
+      window.getSelection()?.removeAllRanges();
+      return;
+    }
+
+    // Handle inline formatting
     const span = document.createElement('span');
     const styles: string[] = [];
-    
+
     if (format.color) {
       styles.push(`color: ${format.color}`);
     }
@@ -269,8 +511,7 @@ export function RichTextCell({
     if (format.italic) {
       styles.push(`font-style: italic`);
     }
-    
-    // Handle text decoration (underline and strikethrough can be combined)
+
     const decorations: string[] = [];
     if (format.underline) {
       decorations.push('underline');
@@ -281,22 +522,19 @@ export function RichTextCell({
     if (decorations.length > 0) {
       styles.push(`text-decoration: ${decorations.join(' ')}`);
     }
-    
+
     span.style.cssText = styles.join('; ');
-    
-    // Wrap the selected text in the styled span
+
     try {
-      const range = savedSelection;
+      const range = workingRange;
       const contents = range.extractContents();
       span.appendChild(contents);
       range.insertNode(span);
-      
-      // Update the element
+
       const htmlContent = contentEditableRef.current.innerHTML;
       const textContent = contentEditableRef.current.textContent || '';
       onChange(textContent, htmlContent);
-      
-      // Clear selection
+
       window.getSelection()?.removeAllRanges();
     } catch (error) {
       console.error('Error applying format:', error);
@@ -399,28 +637,63 @@ export function RichTextCell({
   return (
     <>
       <div
-        ref={contentEditableRef}
-        contentEditable
-        onInput={handleInput}
-        onClick={handleClick}
-        onMouseDown={handleMouseDown}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        onPaste={handlePaste}
-        onMouseUp={handleTextSelect}
-        onKeyUp={handleTextSelect}
-        data-placeholder={placeholder}
-        className="w-full outline-none"
-        style={{
-          cursor: 'text',
-          minHeight: `${minHeight}px`,
-          wordBreak: 'break-word',
-          overflowWrap: 'break-word',
-          lineHeight: '1.2',
-          whiteSpace: 'pre-wrap',
-        }}
-        suppressContentEditableWarning
-      />
+        className="relative w-full"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Drag overlay */}
+        {isDraggingOver && (
+          <div className="absolute inset-0 bg-blue-50 border-2 border-dashed border-blue-400 flex items-center justify-center z-10">
+            <p className="text-blue-600 font-medium text-xs">Drop image</p>
+          </div>
+        )}
+
+        {/* Upload button - shown when focused */}
+        {isFocused && workspaceId && elementId && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleUploadClick}
+            className="absolute top-0 right-0 z-20 opacity-60 hover:opacity-100 h-6 w-6 p-0"
+          >
+            <Upload className="h-3 w-3" />
+          </Button>
+        )}
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileInputChange}
+          className="hidden"
+        />
+
+        <div
+          ref={contentEditableRef}
+          contentEditable
+          onInput={handleInput}
+          onClick={handleClick}
+          onMouseDown={handleMouseDown}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          onPaste={handlePaste}
+          onMouseUp={handleTextSelect}
+          onKeyUp={handleTextSelect}
+          data-placeholder={placeholder}
+          className="w-full outline-none"
+          style={{
+            cursor: 'text',
+            minHeight: `${minHeight}px`,
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            lineHeight: '1.2',
+            whiteSpace: 'pre-wrap',
+          }}
+          suppressContentEditableWarning
+        />
+      </div>
 
       {/* Text Selection Floating Buttons - Rendered in Portal */}
       {hasTextSelection && !showTextFormatPanel && !showHyperlinkMenu && createPortal(
@@ -472,7 +745,6 @@ export function RichTextCell({
         <TextFormatPanel
           position={selectionPosition}
           selectedText={selectedText}
-          selectionRange={{ start: 0, end: 0 }}
           onClose={() => {
             setShowTextFormatPanel(false);
             setHasTextSelection(false);

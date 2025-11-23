@@ -75,10 +75,24 @@ export interface RowData {
 
 export type WorkspaceElement = SystemsTableElement | TextElement | ImageElement | PdfElement | FileElement;
 
+// Image Blob storage interface
+export interface ImageBlob {
+  id: string;
+  workspaceId: string;
+  elementId: string;
+  blob: Blob;
+  fileName: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  createdAt: number;
+}
+
 // Dexie database class
 export class BridgeSystemDB extends Dexie {
   workspaces!: Table<Workspace>;
   elements!: Table<WorkspaceElement>;
+  images!: Table<ImageBlob>;
 
   constructor() {
     super('BridgeSystemDB');
@@ -86,7 +100,8 @@ export class BridgeSystemDB extends Dexie {
     // Define schema
     this.version(1).stores({
       workspaces: 'id, title, createdAt, updatedAt',
-      elements: 'id, workspaceId, type, zIndex'
+      elements: 'id, workspaceId, type, zIndex',
+      images: 'id, workspaceId, elementId, createdAt'
     });
   }
 }
@@ -129,9 +144,10 @@ export const workspaceOperations = {
 
   // Delete workspace and its elements
   async delete(id: string): Promise<void> {
-    await db.transaction('rw', db.workspaces, db.elements, async () => {
+    await db.transaction('rw', db.workspaces, db.elements, db.images, async () => {
       await db.workspaces.delete(id);
       await db.elements.where('workspaceId').equals(id).delete();
+      await db.images.where('workspaceId').equals(id).delete();
     });
   }
 };
@@ -169,5 +185,43 @@ export const elementOperations = {
   // Delete all elements for a workspace
   async deleteByWorkspaceId(workspaceId: string): Promise<void> {
     await db.elements.where('workspaceId').equals(workspaceId).delete();
+  }
+};
+
+// CRUD operations for Images
+export const imageOperations = {
+  // Store image blob
+  async create(image: ImageBlob): Promise<void> {
+    await db.images.add(image);
+  },
+
+  // Get image by ID
+  async getById(id: string): Promise<ImageBlob | undefined> {
+    return await db.images.get(id);
+  },
+
+  // Get all images for an element
+  async getByElementId(elementId: string): Promise<ImageBlob[]> {
+    return await db.images.where('elementId').equals(elementId).toArray();
+  },
+
+  // Get all images for a workspace
+  async getByWorkspaceId(workspaceId: string): Promise<ImageBlob[]> {
+    return await db.images.where('workspaceId').equals(workspaceId).toArray();
+  },
+
+  // Delete image
+  async delete(id: string): Promise<void> {
+    await db.images.delete(id);
+  },
+
+  // Delete all images for an element
+  async deleteByElementId(elementId: string): Promise<void> {
+    await db.images.where('elementId').equals(elementId).delete();
+  },
+
+  // Delete all images for a workspace
+  async deleteByWorkspaceId(workspaceId: string): Promise<void> {
+    await db.images.where('workspaceId').equals(workspaceId).delete();
   }
 };

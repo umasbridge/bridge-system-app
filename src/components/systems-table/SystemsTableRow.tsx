@@ -28,6 +28,8 @@ interface SystemsTableRowProps {
   onUpdateMeaningWidth: (width: number) => void;
   gridlines?: GridlineOptions;
   onCellFocusChange?: (rowId: string, column: 'bid' | 'meaning', isFocused: boolean, applyFormatFn?: (format: any) => void) => void;
+  workspaceId?: string;
+  elementId?: string;
 }
 
 export function SystemsTableRow({
@@ -46,7 +48,9 @@ export function SystemsTableRow({
   meaningWidth,
   onUpdateMeaningWidth,
   gridlines,
-  onCellFocusChange
+  onCellFocusChange,
+  workspaceId,
+  elementId
 }: SystemsTableRowProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -184,6 +188,8 @@ export function SystemsTableRow({
                     onCellFocusChange(row.id, 'bid', isFocused, applyFormatFn);
                   }
                 }}
+                workspaceId={workspaceId}
+                elementId={`${elementId}-${row.id}-bid`}
               />
             </div>
 
@@ -270,6 +276,8 @@ export function SystemsTableRow({
                 onCellFocusChange(row.id, 'meaning', isFocused, applyFormatFn);
               }
             }}
+            workspaceId={workspaceId}
+            elementId={`${elementId}-${row.id}-meaning`}
           />
 
           {/* Action Buttons - Inside meaning column, extreme right */}
@@ -348,6 +356,8 @@ export function SystemsTableRow({
               onUpdateMeaningWidth={onUpdateMeaningWidth}
               gridlines={gridlines}
               onCellFocusChange={onCellFocusChange}
+              workspaceId={workspaceId}
+              elementId={elementId}
             />
           ))}
         </div>
