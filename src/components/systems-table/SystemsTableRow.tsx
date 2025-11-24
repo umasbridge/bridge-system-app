@@ -161,7 +161,10 @@ export function SystemsTableRow({
             borderBottom: gridlines?.enabled
               ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
               : '1px solid #D1D5DB',
-            borderLeft: level > 0 ? (gridlines?.enabled
+            borderLeft: gridlines?.enabled
+              ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
+              : '1px solid #D1D5DB',
+            borderTop: level === 0 ? (gridlines?.enabled
               ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
               : '1px solid #D1D5DB') : 'none',
           }}
