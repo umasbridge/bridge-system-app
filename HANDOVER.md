@@ -1,62 +1,69 @@
 # Bridge System App - Session Handover
 
 ## Session Metadata
-- Date: 2025-11-22 21:10 IST
-- Duration: ~45 min
-- Thread Context: 180K tokens
-- Branch: master (merged feature/auth-dashboard)
+- Date: 2025-11-24 07:58 IST
+- Duration: ~1.5 hours
+- Thread Context: 110K tokens
+- Branch: master
 
 ## Current Status
-Dashboard COMPLETE with full workspace browser (grid/list views, search, templates). Feature branch merged to master. Ready for Phase 1: Image storage system.
+All blocker bugs FIXED. SystemsTable auto-sizes. PDF drag works vertically. Font formatting bugs resolved. Ready for Phase 2.
 
-## Exact Position on 4-Phase Plan
-- ✅ Dashboard complete (merged to master)
-- ⏸️ Phase 1: Image storage (next task)
-  - Copy-paste images (Ctrl+V)
-  - Upload button
-  - Drag-drop
-  - IndexedDB Blob storage
-- ⏭️ Phase 2: Colleague builds sample workspaces
-- ⏭️ Phase 3: Extract templates from workspaces
-- ⏭️ Phase 4: Deploy (Turso + Cloud Run optional)
+## Exact Position
+- ✅ Phase 1: Image storage COMPLETE (all features working)
+- ✅ Image manipulation: Selection, resize, delete (RichTextCell + TextElement)
+- ✅ PDF upload: Fixed worker version mismatch, PDF-only filter
+- ✅ Auto-layout: Smart flow around manually positioned elements
+- ✅ SystemsTable auto-size: Dynamic height calculation (1 row = 100px)
+- ✅ PDF vertical drag: Interaction state pattern prevents auto-layout interference
+- ✅ Font formatting: Color + accumulation bugs fixed in TextElement + RichTextCell
+- ✅ Upload buttons removed: Streamlined to copy/paste and drag-drop only
+- ⏭️ Next: Phase 2 (colleague builds workspaces using UI)
 
 ## Critical Context
 
-1. **4-Phase Workflow Established**: Phase 1 = finalize workspace tools (image storage), Phase 2 = colleague builds sample workspaces using UI, Phase 3 = export workspaces as template code, Phase 4 = deploy (optional migration to Turso).
+1. **Interaction State Pattern**: Auto-layout pauses during drag/resize operations using `isInteracting` boolean state. Prevents auto-layout from repositioning elements mid-drag. Applied to all ResizableElement instances (SystemsTable, PDF, images).
 
-2. **Dashboard Integration**: Full workspace browser with IndexedDB persistence, template modal (3 templates with descriptions but empty workspaces), grid/list toggle, search filter, empty states, top nav with logout.
+2. **SystemsTable Auto-Size Formula**: `Math.max(100, initialRowCount * 80 + 20)`. 1 row = 100px (was 200px), reducing whitespace for small tables.
 
-3. **Route Fix Applied**: Changed `/workspace` to `/workspace/:id?` in App.tsx:31 to accept workspace ID parameter for navigation.
+3. **TextFormatPanel Format Isolation**: `handleFormatChange` sends only changed properties (`onApply(newFormat)`), not accumulated state. Prevents unwanted inheritance of previous formatting choices across selections.
 
-4. **IndexedDB Scoping**: Workspaces isolated by origin (port 3000 ≠ port 3001). No user isolation yet - all users on same browser see same workspaces (acceptable for MVP, needs userId filtering for multi-user).
+4. **TextAlign vs Inline Formatting**: TextAlign skipped when inline formatting present (`!hasInlineFormatting`). Ensures color/bold/size take precedence over block-level alignment. Same fix applied to TextElement and RichTextCell.
 
-5. **Image Storage Requirements**: Must support copy-paste (Ctrl+V), upload button, drag-drop. Images displayed inline (not just IDs), stored in IndexedDB Blobs (not base64 to avoid bloat).
+5. **Upload Removal**: User prefers streamlined UI - removed upload buttons from TextElement and RichTextCell. Only copy/paste and drag-drop remain for image insertion.
 
 ## Decisions Made
 
-- **Decision:** Merge feature/auth-dashboard to master before image storage
-  **Rationale:** Clean breakpoint (Dashboard complete, tested), avoid branch confusion, full context available for next feature.
+- **Decision:** Dynamic height calculation for SystemsTable
+  **Rationale:** Fixed 200px height wasteful for 1-row tables. Formula `Math.max(100, initialRowCount * 80 + 20)` sizes container to content. Reduces whitespace, improves visual density.
 
-- **Decision:** Build templates BEFORE migration to Turso
-  **Rationale:** If migrate first, templates built locally won't work in new schema. Build templates in IndexedDB format, then migrate everything together.
+- **Decision:** Interaction state pattern to pause auto-layout
+  **Rationale:** Auto-layout useEffect ran during drag operations, repositioning element mid-drag. Adding `isInteracting` boolean state pauses auto-layout during user interactions. Applied uniformly to all ResizableElement instances.
 
-- **Decision:** Phase 2 = colleague uses UI to build workspaces (not code)
-  **Rationale:** Real sample data from actual user workflow. Export to templates after completion.
+- **Decision:** TextFormatPanel sends only changed properties
+  **Rationale:** Accumulated state caused unwanted format inheritance (changing font size also applied previous color choice). Sending only `newFormat` vs `updatedFormat` isolates changes. User expects independent formatting operations.
 
-- **Decision:** Turso + Cloud Run deployment optional (Phase 4)
-  **Rationale:** IndexedDB sufficient for MVP (single-user desktop app). Migration adds user isolation + collaboration but increases complexity.
+- **Decision:** Remove upload buttons from TextElement and RichTextCell
+  **Rationale:** User feedback: "remove the upload icon for uploading images in TextElement or RTCs (I am happy with Copy Paste and drag-drop)". Streamlines UI, reduces interaction patterns to maintain.
 
-## Blockers/Risks
-- [ ] Context usage at 180K/200K (90%) - thread running low, preclear completed for fresh start
-- [ ] Colleague needs image storage complete before building workspaces (blocker for Phase 2)
+## Blockers
+
+None. All previous blockers resolved this session.
 
 ## Files Modified This Session
 
-- `src/pages/Dashboard.tsx` - Complete rebuild: workspace browser with grid/list views, search, template modal, empty states, IndexedDB integration
-- `src/App.tsx` - Changed route from `/workspace` to `/workspace/:id?` for navigation support
-- `HANDOVER.md` - Updated with 4-phase plan, Dashboard completion, image storage next
-- `HISTORY.md` - Added session entry (Dashboard completion, merge to master)
+- `src/components/workspace-system/WorkspaceEditor.tsx` - SystemsTable auto-size calculation (line 157-160), interaction state tracking (line 80), auto-layout pause during interactions (line 371), callbacks for all ResizableElements (lines 472-473, 577-578, 606-607, 622-623)
+- `src/components/workspace-system/PdfElement.tsx` - Extended interface and props with onInteractionStart/End callbacks (lines 20-21, 31-32, 59-60)
+- `src/components/workspace-system/TextElement.tsx` - Font color bug fix with `!hasInlineFormatting` check (line 777), removed upload button and handlers
+- `src/components/systems-table/RichTextCell.tsx` - Removed upload button and handlers
+- `src/components/workspace-system/TextFormatPanel.tsx` - Format accumulation fix: `onApply(newFormat)` instead of `onApply(updatedFormat)` (line 76)
+
+## Technical Debt
+
+- Auto-layout runs on every element change (performance concern for large workspaces)
+- No loading indicator during PDF processing (multi-page PDFs take time)
+- TextFormatPanel sends entire format object with defaults (textAlign:'left' always included)
 
 ## Handover Prompt
 
-"Bridge System App on master branch: Dashboard complete (workspace browser, grid/list views, search, 3-template modal, IndexedDB persistence). Next: Build image storage system in TextElement with copy-paste (Ctrl+V), upload button, drag-drop, IndexedDB Blob storage (not base64). Images must display inline, not just IDs. 4-Phase plan: (1) finalize tools, (2) colleague builds samples via UI, (3) export as templates, (4) optional Turso migration. Dev server: http://localhost:3001/. Reference HANDOVER.md for phase details."
+"Bridge System App on master: All Phase 1 blockers FIXED. SystemsTable auto-sizes (1 row = 100px). PDF drag works vertically (interaction state pattern). Font formatting bugs resolved (color + accumulation). Upload buttons removed per user preference. Ready for Phase 2 (colleague builds sample workspaces). Dev: http://localhost:3002/. See HANDOVER.md for complete session details."

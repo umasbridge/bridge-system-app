@@ -1,5 +1,66 @@
 # Documentation History - Bridge System App
 
+## 2025-11-24 07:58 IST
+**Session:** Bug fixes (SystemsTable auto-size, PDF vertical drag, font formatting)
+**Thread Context:** 110K tokens
+**Branch:** master
+
+**CLAUDE.md Changes:**
+- No changes (no fundamental architecture modifications)
+
+**HANDOVER.md Changes:**
+- Updated: Session metadata (11-24 07:58 IST, 110K tokens)
+- Updated: Current status - both blocker bugs FIXED, font formatting bugs FIXED
+- Updated: Exact position - marked SystemsTable auto-size and PDF drag as FIXED
+- Added: 4 new decisions (auto-size calculation, interaction state pattern, format isolation, upload removal)
+- Removed: 2 blockers (SystemsTable height, PDF vertical drag)
+
+**Key Decisions:**
+- Dynamic height calculation for SystemsTable (1 row = 100px, not 200px)
+- Interaction state pattern to pause auto-layout during drag/resize
+- TextFormatPanel sends only changed properties, not accumulated state
+- Remove upload buttons, keep only copy/paste and drag-drop for images
+
+**Work Completed:**
+- FIXED SystemsTable auto-sizing:
+  - Root cause: Fixed 200px height for all tables regardless of row count
+  - Solution: Calculate height dynamically: `Math.max(100, initialRowCount * 80 + 20)`
+  - Result: 1-row table now 100px instead of 200px
+  - Location: WorkspaceEditor.tsx:157-160
+- FIXED PDF vertical drag:
+  - Root cause: Auto-layout useEffect running during drag operations, repositioning element
+  - Solution: Interaction state pattern - added `isInteracting` boolean state
+  - Auto-layout pauses when `isInteracting === true`
+  - Added `onInteractionStart`/`onInteractionEnd` callbacks to all ResizableElement instances
+  - Location: WorkspaceEditor.tsx:80,371,472-473,577-578,606-607,622-623
+- FIXED font color bug in TextElement:
+  - Root cause: Same bug as RichTextCell (textAlign early return prevented inline styles)
+  - Solution: Added `!hasInlineFormatting` check to textAlign condition
+  - Location: TextElement.tsx:777
+- FIXED format accumulation bug:
+  - Root cause: TextFormatPanel merged new format with accumulated state
+  - Solution: Changed `onApply(updatedFormat)` to `onApply(newFormat)`
+  - Now only sends specific property changed, not entire state
+  - Location: TextFormatPanel.tsx:72-77
+- REMOVED upload buttons:
+  - User preference: streamlined UI with copy/paste and drag-drop only
+  - Removed from TextElement.tsx and RichTextCell.tsx
+  - Deleted Upload import, fileInputRef, handlers, button JSX, hidden input
+
+**Files Modified:**
+- src/components/workspace-system/WorkspaceEditor.tsx (5 changes - auto-size calculation, interaction state, callbacks)
+- src/components/workspace-system/PdfElement.tsx (interface + props for interaction callbacks)
+- src/components/workspace-system/TextElement.tsx (font color fix, upload removal)
+- src/components/systems-table/RichTextCell.tsx (upload removal)
+- src/components/workspace-system/TextFormatPanel.tsx (format accumulation fix)
+
+**Next Session:**
+- Phase 2: Colleague builds sample workspaces using the UI
+- Phase 3: Export workspaces as template code
+- Phase 4: Optional Turso migration for collaboration features
+
+---
+
 ## 2025-11-22 17:40 IST
 **Session:** Auth infrastructure + visual QA with Chrome DevTools (UPDATED)
 **Thread Context:** 125K tokens (continuation of 15:00 session)
@@ -438,3 +499,71 @@
 - UI polish and testing
 
 ---
+
+---
+
+## 2025-11-23 02:35 IST
+**Session:** Image storage + RichTextCell feature parity
+**Thread Context:** 122K tokens
+**Branch:** master
+
+**CLAUDE.md Changes:**
+- No changes (no fundamental architecture modifications)
+
+**HANDOVER.md Changes:**
+- Replaced entirely: New handover for image storage + formatting bug fixes
+- Updated: Session metadata (11-23 02:35 IST, 2.5 hours, 122K tokens)
+- Updated: Current status - Phase 1 COMPLETE, RichTextCell/TextElement feature parity achieved
+- Updated: Exact position - marked Phase 1 complete, Phase 2 ready to start
+- Updated: Critical context - 5 technical learnings (feature parity, image architecture, formatting bug, hyperlink integration, selection updates)
+- Added: 4 decisions with rationale (image storage scope, Blob vs base64, remove floating buttons, lists/indents parity)
+- Updated: Files modified - 6 components across db/workspace-system/systems-table
+- Updated: Git commits - 6 commits listed with hashes
+
+**Key Decisions:**
+- IndexedDB Blob storage for images (not base64 to avoid 33% bloat)
+- RichTextCell feature parity with TextElement (identical formatting + hyperlinks + images)
+- Remove duplicate floating buttons from RichTextCell (use side panel only)
+- Add lists and indents to RichTextCell (no reason for feature gap)
+
+**Work Completed:**
+- Built image storage system:
+  - Added images table to IndexedDB (src/db/database.ts)
+  - Implemented imageOperations (create, getById, getByElementId, delete, etc)
+  - Added paste/upload/drag-drop to TextElement and RichTextCell
+  - Images stored as Blobs with workspaceId/elementId foreign keys
+  - Object URLs created for display (avoids base64 bloat)
+- Fixed RichTextCell text formatting bug:
+  - Root cause: applyFormat() returned early when textAlign present
+  - Solution: Skip textAlign when inline formatting exists
+  - Text color/size/bold/etc now work correctly
+- Added hyperlink functionality to RichTextCell:
+  - Extended onFocusChange callback chain with applyHyperlinkFn + selectedText
+  - Updated 4 components: RichTextCell → Row → Table → WorkspaceEditor
+  - "Link" button now appears in cell format panel
+- Fixed stale selectedText bug:
+  - handleTextSelect now notifies parent when selection changes
+  - Hyperlink dialog always shows current selection
+- Added lists and indents to RichTextCell:
+  - Bullet/numbered lists (format.listType)
+  - Increase/decrease indent (format.indent, ±20px marginLeft)
+  - Matches TextElement implementation exactly
+
+**Git Commits (6 total):**
+- 068406e: Add image storage system with IndexedDB Blob storage
+- 394bb64: Fix RichTextCell: Remove floating buttons, use side panel only
+- b81df9b: Fix RichTextCell text formatting: Skip textAlign when inline formatting present
+- 6bd76f4: Add hyperlink functionality to RichTextCell
+- 3adf0ed: Fix: Update selectedText when selection changes within focused cell
+- 96cb24e: Add lists and indents support to RichTextCell for feature parity with TextElement
+
+**Session Learnings:**
+- TextFormatPanel sends textAlign:'left' with all formatting by default
+- Must check for inline formatting presence before applying textAlign
+- Feature parity between TextElement and RichTextCell prevents user confusion
+- Selection updates needed for hyperlink dialog to track current selection
+
+**Next Session:**
+- Phase 2: Colleague builds sample workspaces using the UI
+- Phase 3: Export workspaces as template code
+- Phase 4: Optional Turso migration for collaboration features

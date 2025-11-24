@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, Type, Upload } from 'lucide-react';
+import { Link, Type } from 'lucide-react';
 import { Button } from '../ui/button';
 import { TextFormatPanel } from '../workspace-system/TextFormatPanel';
 import { WorkspaceHyperlinkMenu } from './WorkspaceHyperlinkMenu';
@@ -44,10 +44,12 @@ export function RichTextCell({
   const isInternalUpdate = useRef(false);
   const isClickingLink = useRef(false);
   const [imageObjectUrls, setImageObjectUrls] = useState<Map<string, string>>(new Map());
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
   const [isFocused, setIsFocused] = useState(false);
+  const [imageResizing, setImageResizing] = useState(false);
+  const imageResizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
+  const isClickingImage = useRef(false);
 
   // Try to get workspace context, but don't fail if not available
   let workspaceContext: ReturnType<typeof useWorkspaceContext> | null = null;
@@ -91,6 +93,41 @@ export function RichTextCell({
       }
     });
   }, [imageObjectUrls]);
+
+  // Handle Delete/Backspace for selected images
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (!selectedImage || !contentEditableRef.current) return;
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+
+        // Get image ID before removing
+        const imageId = selectedImage.getAttribute('data-image-id');
+
+        // Remove image from DOM
+        selectedImage.remove();
+
+        // Delete from IndexedDB
+        if (imageId) {
+          await imageOperations.delete(imageId);
+        }
+
+        // Update content
+        const htmlContent = contentEditableRef.current.innerHTML;
+        const textContent = contentEditableRef.current.textContent || '';
+        onChange(textContent, htmlContent);
+
+        // Clear selection
+        setSelectedImage(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedImage, onChange]);
 
   // Initialize content on mount
   useEffect(() => {
@@ -155,8 +192,31 @@ export function RichTextCell({
   };
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Check if a hyperlink was clicked
     const target = e.target as HTMLElement;
+
+    // Check if clicking on an image
+    if (target.tagName === 'IMG') {
+      e.preventDefault();
+      e.stopPropagation();
+      isClickingImage.current = true;
+      setSelectedImage(target as HTMLImageElement);
+      setHasTextSelection(false);
+
+      // Immediately prevent format panel from showing
+      if (onFocusChange) {
+        onFocusChange(false);
+      }
+
+      setTimeout(() => {
+        isClickingImage.current = false;
+      }, 100);
+      return;
+    } else {
+      // Click outside image, deselect
+      setSelectedImage(null);
+    }
+
+    // Check if a hyperlink was clicked
     const link = target.closest('a[data-workspace]');
 
     if (link && workspaceContext) {
@@ -223,6 +283,11 @@ export function RichTextCell({
   const handleFocus = () => {
     // Don't show format panel when clicking a hyperlink
     if (isClickingLink.current) {
+      return;
+    }
+
+    // Don't show format panel when clicking an image
+    if (isClickingImage.current || selectedImage) {
       return;
     }
 
@@ -413,25 +478,6 @@ export function RichTextCell({
     }
   };
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (file.type.startsWith('image/')) {
-        await insertImageFromFile(file);
-        break;
-      }
-    }
-
-    e.target.value = '';
-  };
-
   const applyFormat = (format: any) => {
     if (!contentEditableRef.current) return;
 
@@ -616,11 +662,75 @@ export function RichTextCell({
 
     span.style.cssText = styles.join('; ');
 
+    // Apply formatting while preserving unmodified styles
     try {
       const range = workingRange;
-      const contents = range.extractContents();
-      span.appendChild(contents);
-      range.insertNode(span);
+
+      // Extract contents as DOM fragment to preserve structure
+      const fragment = range.extractContents();
+
+      // Collect text segments with their existing styles (copy cssText immediately, not references)
+      const segments: Array<{ text: string; cssText: string }> = [];
+
+      const collectTextSegments = (node: Node, parentCssText: string = '') => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent || '';
+          if (text) {
+            segments.push({ text, cssText: parentCssText });
+          }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as HTMLElement;
+          // Copy cssText immediately - style object becomes invalid after DOM removal
+          const currentCssText = element.style.cssText || parentCssText;
+
+          node.childNodes.forEach(child => {
+            collectTextSegments(child, currentCssText);
+          });
+        } else if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+          // DocumentFragment: iterate children without changing parent styles
+          node.childNodes.forEach(child => {
+            collectTextSegments(child, parentCssText);
+          });
+        }
+      };
+
+      collectTextSegments(fragment);
+
+      // Create new spans with merged styles
+      const mergedFragment = document.createDocumentFragment();
+
+      segments.forEach(({ text, cssText }) => {
+        const newSpan = document.createElement('span');
+
+        // Copy existing styles first
+        if (cssText) {
+          newSpan.style.cssText = cssText;
+        }
+
+        // Override with new format properties
+        if (format.color) newSpan.style.color = format.color;
+        if (format.backgroundColor && format.backgroundColor !== 'transparent') {
+          newSpan.style.backgroundColor = format.backgroundColor;
+        }
+        if (format.fontFamily) newSpan.style.fontFamily = format.fontFamily;
+        if (format.fontSize) newSpan.style.fontSize = `${format.fontSize}px`;
+        if (format.bold) newSpan.style.fontWeight = 'bold';
+        if (format.italic) newSpan.style.fontStyle = 'italic';
+
+        // Handle text decoration merge
+        if (format.underline || format.strikethrough) {
+          const decorations: string[] = [];
+          if (format.underline) decorations.push('underline');
+          if (format.strikethrough) decorations.push('line-through');
+          newSpan.style.textDecoration = decorations.join(' ');
+        }
+
+        newSpan.appendChild(document.createTextNode(text));
+        mergedFragment.appendChild(newSpan);
+      });
+
+      // Insert the merged fragment
+      range.insertNode(mergedFragment);
 
       const htmlContent = contentEditableRef.current.innerHTML;
       const textContent = contentEditableRef.current.textContent || '';
@@ -725,6 +835,73 @@ export function RichTextCell({
     }
   };
 
+  // Image resize handlers
+  const handleImageResizeStart = (e: React.MouseEvent, corner: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!selectedImage || !contentEditableRef.current) return;
+
+    setImageResizing(true);
+    imageResizeStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: selectedImage.offsetWidth,
+      height: selectedImage.offsetHeight
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!selectedImage) return;
+
+      const deltaX = moveEvent.clientX - imageResizeStart.current.x;
+      const deltaY = moveEvent.clientY - imageResizeStart.current.y;
+
+      // Calculate new dimensions based on corner
+      let newWidth = imageResizeStart.current.width;
+      let newHeight = imageResizeStart.current.height;
+
+      if (corner.includes('e')) {
+        newWidth = Math.max(50, imageResizeStart.current.width + deltaX);
+      }
+      if (corner.includes('s')) {
+        newHeight = Math.max(50, imageResizeStart.current.height + deltaY);
+      }
+      if (corner.includes('w')) {
+        newWidth = Math.max(50, imageResizeStart.current.width - deltaX);
+      }
+      if (corner.includes('n')) {
+        newHeight = Math.max(50, imageResizeStart.current.height - deltaY);
+      }
+
+      // Maintain aspect ratio
+      const aspectRatio = imageResizeStart.current.width / imageResizeStart.current.height;
+      if (corner === 'se' || corner === 'sw' || corner === 'ne' || corner === 'nw') {
+        newHeight = newWidth / aspectRatio;
+      }
+
+      // Set image dimensions directly
+      selectedImage.style.width = `${newWidth}px`;
+      selectedImage.style.height = `${newHeight}px`;
+    };
+
+    const handleMouseUp = () => {
+      setImageResizing(false);
+
+      // Save updated content
+      if (contentEditableRef.current) {
+        const htmlContent = contentEditableRef.current.innerHTML;
+        const textContent = contentEditableRef.current.textContent || '';
+        onChange(textContent, htmlContent);
+      }
+
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   return (
     <>
       <div
@@ -739,27 +916,6 @@ export function RichTextCell({
             <p className="text-blue-600 font-medium text-xs">Drop image</p>
           </div>
         )}
-
-        {/* Upload button - shown when focused */}
-        {isFocused && workspaceId && elementId && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleUploadClick}
-            className="absolute top-0 right-0 z-20 opacity-60 hover:opacity-100 h-6 w-6 p-0"
-          >
-            <Upload className="h-3 w-3" />
-          </Button>
-        )}
-
-        {/* Hidden file input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleFileInputChange}
-          className="hidden"
-        />
 
         <div
           ref={contentEditableRef}
@@ -785,6 +941,88 @@ export function RichTextCell({
           suppressContentEditableWarning
         />
       </div>
+
+      {/* Image Resize Handles - Rendered in Portal */}
+      {selectedImage && createPortal(
+        (() => {
+          const rect = selectedImage.getBoundingClientRect();
+          return (
+            <div
+              className="fixed z-50"
+              style={{
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+                border: '2px solid #3b82f6',
+                boxSizing: 'border-box',
+                pointerEvents: 'none'
+              }}
+            >
+              {/* Southeast corner handle */}
+              <div
+                className="absolute bg-blue-500"
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  bottom: '-6px',
+                  right: '-6px',
+                  border: '2px solid white',
+                  cursor: 'se-resize',
+                  pointerEvents: 'auto'
+                }}
+                onMouseDown={(e) => handleImageResizeStart(e, 'se')}
+              />
+
+              {/* Southwest corner handle */}
+              <div
+                className="absolute bg-blue-500"
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  bottom: '-6px',
+                  left: '-6px',
+                  border: '2px solid white',
+                  cursor: 'sw-resize',
+                  pointerEvents: 'auto'
+                }}
+                onMouseDown={(e) => handleImageResizeStart(e, 'sw')}
+              />
+
+              {/* Northeast corner handle */}
+              <div
+                className="absolute bg-blue-500"
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  top: '-6px',
+                  right: '-6px',
+                  border: '2px solid white',
+                  cursor: 'ne-resize',
+                  pointerEvents: 'auto'
+                }}
+                onMouseDown={(e) => handleImageResizeStart(e, 'ne')}
+              />
+
+              {/* Northwest corner handle */}
+              <div
+                className="absolute bg-blue-500"
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  top: '-6px',
+                  left: '-6px',
+                  border: '2px solid white',
+                  cursor: 'nw-resize',
+                  pointerEvents: 'auto'
+                }}
+                onMouseDown={(e) => handleImageResizeStart(e, 'nw')}
+              />
+            </div>
+          );
+        })(),
+        document.body
+      )}
     </>
   );
 }

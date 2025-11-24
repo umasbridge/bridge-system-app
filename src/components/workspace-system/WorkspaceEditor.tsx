@@ -11,6 +11,7 @@ import { TextElementFormatPanel } from './TextElementFormatPanel';
 import { PdfElementComponent } from './PdfElement';
 import * as pdfjsLib from 'pdfjs-dist';
 import { elementOperations, WorkspaceElement as DBWorkspaceElement } from '../../db/database';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 interface GridlineOptions {
   enabled: boolean;
@@ -76,6 +77,7 @@ export function WorkspaceEditor({
   const [elements, setElements] = useState<WorkspaceElement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isInteracting, setIsInteracting] = useState(false);
   const [formatPanelId, setFormatPanelId] = useState<string | null>(null);
   const [deletedElement, setDeletedElement] = useState<WorkspaceElement | null>(null);
   const [focusedTextElementId, setFocusedTextElementId] = useState<string | null>(null);
@@ -154,12 +156,16 @@ export function WorkspaceEditor({
 
   const handleInsertSystemsTable = async () => {
     const position = getNextPosition();
+    // Calculate height based on initial row count (default 1 row = ~100px with padding)
+    const initialRowCount = 1;
+    const calculatedHeight = Math.max(100, initialRowCount * 80 + 20);
+
     const newElement: SystemsTableElement & { workspaceId: string } = {
       id: Math.random().toString(36).substring(7),
       workspaceId,
       type: 'systems-table',
       position,
-      size: { width: 680, height: 200 },
+      size: { width: 680, height: calculatedHeight },
       zIndex: elements.length,
       borderColor: 'transparent',
       borderWidth: 0,
@@ -224,74 +230,57 @@ export function WorkspaceEditor({
   const handleUploadFile = async () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.pdf,.doc,.docx,.txt';
+    input.accept = '.pdf';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
+      if (file && file.type === 'application/pdf') {
         const position = getNextPosition();
-        
-        // Handle PDFs specially
-        if (file.type === 'application/pdf') {
-          try {
-            const arrayBuffer = await file.arrayBuffer();
-            
-            // Set worker source
-            pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
-            
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            const pageImages: string[] = [];
-            
-            // Convert all pages to images
-            for (let i = 1; i <= pdf.numPages; i++) {
-              const page = await pdf.getPage(i);
-              const viewport = page.getViewport({ scale: 1.5 });
-              const canvas = document.createElement('canvas');
-              const context = canvas.getContext('2d');
-              canvas.height = viewport.height;
-              canvas.width = viewport.width;
-              
-              if (context) {
-                await page.render({ canvasContext: context, viewport }).promise;
-                pageImages.push(canvas.toDataURL());
-              }
+        console.log('PDF position:', position, 'elements count:', elements.length);
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+
+          // Set worker source to local worker
+          pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          const pageImages: string[] = [];
+
+          // Convert all pages to images
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const viewport = page.getViewport({ scale: 1.5 });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            if (context) {
+              await page.render({ canvasContext: context, viewport }).promise;
+              pageImages.push(canvas.toDataURL());
             }
-            
-            const newElement: PdfElement & { workspaceId: string } = {
-              id: Math.random().toString(36).substring(7),
-              workspaceId,
-              type: 'pdf',
-              position,
-              size: { width: 600, height: 800 },
-              zIndex: elements.length,
-              fileName: file.name,
-              currentPage: 1,
-              totalPages: pdf.numPages,
-              pageImages,
-              borderColor: 'transparent',
-              borderWidth: 0
-            };
-            await elementOperations.create(newElement);
-            setElements([...elements, newElement]);
-          } catch (error) {
-            console.error('Error processing PDF:', error);
           }
-        } else {
-          // Handle other file types
-          const newElement: FileElement & { workspaceId: string } = {
+
+          const newElement: PdfElement & { workspaceId: string } = {
             id: Math.random().toString(36).substring(7),
             workspaceId,
-            type: 'file',
+            type: 'pdf',
             position,
-            size: { width: 400, height: 80 },
+            size: { width: 600, height: 800 },
             zIndex: elements.length,
             fileName: file.name,
-            fileSize: file.size,
-            fileType: file.type,
+            currentPage: 1,
+            totalPages: pdf.numPages,
+            pageImages,
             borderColor: 'transparent',
             borderWidth: 0
           };
           await elementOperations.create(newElement);
           setElements([...elements, newElement]);
+        } catch (error) {
+          console.error('Error processing PDF:', error);
+          console.error('Error details:', error instanceof Error ? error.message : String(error));
+          console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+          alert(`Failed to load PDF: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
     };
@@ -379,26 +368,42 @@ export function WorkspaceEditor({
 
   // Auto-reposition elements when sizes change
   useEffect(() => {
-    if (isLoading) return; // Don't reposition while loading
+    if (isLoading || isInteracting) return; // Don't reposition while loading or during drag/resize
 
     let hasChanges = false;
     const updatedElements = [...elements];
 
-    // Sort elements by their zIndex/creation order to maintain intended stacking
-    const sortedIndices = elements
-      .map((_, index) => index)
-      .sort((a, b) => elements[a].zIndex - elements[b].zIndex);
+    // Separate manually positioned and auto-layout elements
+    const manualElements = elements.filter(el => el.isManuallyPositioned);
+    const autoElements = elements.filter(el => !el.isManuallyPositioned);
 
-    // Calculate target Y position for each element
+    // Sort auto-layout elements by zIndex
+    const sortedAutoIndices = elements
+      .map((el, index) => ({ el, index }))
+      .filter(({ el }) => !el.isManuallyPositioned)
+      .sort((a, b) => a.el.zIndex - b.el.zIndex);
+
     let cumulativeY = 20; // Start position
 
-    for (let i = 0; i < sortedIndices.length; i++) {
-      const index = sortedIndices[i];
-      const element = elements[index];
+    for (let i = 0; i < sortedAutoIndices.length; i++) {
+      const { index, el: element } = sortedAutoIndices[i];
 
-      // Skip manually positioned elements - they don't participate in auto-layout
-      if (element.isManuallyPositioned) {
-        continue;
+      // Check if any manually positioned element occupies this Y range
+      let conflictFound = true;
+      while (conflictFound) {
+        conflictFound = false;
+        for (const manualEl of manualElements) {
+          const manualTop = manualEl.position.y;
+          const manualBottom = manualEl.position.y + manualEl.size.height;
+          const proposedBottom = cumulativeY + element.size.height;
+
+          // If proposed position overlaps with manual element, move below it
+          if (cumulativeY < manualBottom && proposedBottom > manualTop) {
+            cumulativeY = manualBottom + ELEMENT_SPACING;
+            conflictFound = true;
+            break;
+          }
+        }
       }
 
       // Update position if it has changed
@@ -419,7 +424,7 @@ export function WorkspaceEditor({
       // Bulk update DB with new positions
       elementOperations.bulkUpdate(updatedElements as any);
     }
-  }, [elements.map(el => `${el.id}-${el.size.height}-${el.isManuallyPositioned}`).join(','), isLoading]);
+  }, [elements.map(el => `${el.id}-${el.size.height}-${el.isManuallyPositioned}-${el.position.y}`).join(','), isLoading, isInteracting]);
   
   useEffect(() => {
     return () => {
@@ -463,7 +468,9 @@ export function WorkspaceEditor({
                   onSelect: () => setSelectedId(element.id),
                   onUpdate: (updates) => handleUpdate(element.id, updates),
                   onDelete: () => handleDelete(element.id),
-                  onFormat: () => setFormatPanelId(element.id)
+                  onFormat: () => setFormatPanelId(element.id),
+                  onInteractionStart: () => setIsInteracting(true),
+                  onInteractionEnd: () => setIsInteracting(false)
                 }}
                 data-table-element
               >
@@ -566,7 +573,9 @@ export function WorkspaceEditor({
                 actions={{
                   onSelect: () => setSelectedId(element.id),
                   onUpdate: (updates) => handleUpdate(element.id, updates),
-                  onDelete: () => handleDelete(element.id)
+                  onDelete: () => handleDelete(element.id),
+                  onInteractionStart: () => setIsInteracting(true),
+                  onInteractionEnd: () => setIsInteracting(false)
                 }}
               >
                 <img 
@@ -594,6 +603,8 @@ export function WorkspaceEditor({
                 onSelect={() => setSelectedId(element.id)}
                 onUpdate={(updates) => handleUpdate(element.id, updates)}
                 onDelete={() => handleDelete(element.id)}
+                onInteractionStart={() => setIsInteracting(true)}
+                onInteractionEnd={() => setIsInteracting(false)}
               />
             );
           }
@@ -609,7 +620,9 @@ export function WorkspaceEditor({
                 actions={{
                   onSelect: () => setSelectedId(element.id),
                   onUpdate: (updates) => handleUpdate(element.id, updates),
-                  onDelete: () => handleDelete(element.id)
+                  onDelete: () => handleDelete(element.id),
+                  onInteractionStart: () => setIsInteracting(true),
+                  onInteractionEnd: () => setIsInteracting(false)
                 }}
               >
                 <div 

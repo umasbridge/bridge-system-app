@@ -7,7 +7,6 @@ import { TextElementFormatPanel } from './TextElementFormatPanel';
 import { WorkspaceHyperlinkMenu } from './WorkspaceHyperlinkMenu';
 import { TextFormatPanel } from './TextFormatPanel';
 import { imageOperations, ImageBlob } from '../../db/database';
-import { Upload } from 'lucide-react';
 
 export interface TextElement extends BaseElement {
   type: 'text';
@@ -53,7 +52,6 @@ export function TextElementComponent({
   const [imageResizing, setImageResizing] = useState(false);
   const imageResizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const [imageObjectUrls, setImageObjectUrls] = useState<Map<string, string>>(new Map());
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // Load images from IndexedDB and create object URLs
@@ -94,6 +92,44 @@ export function TextElementComponent({
       }
     });
   }, [imageObjectUrls]);
+
+  // Handle Delete/Backspace for selected images
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (!selectedImage || !contentEditableRef.current) return;
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+
+        // Get image ID before removing
+        const imageId = selectedImage.getAttribute('data-image-id');
+
+        // Remove image from DOM
+        selectedImage.remove();
+
+        // Delete from IndexedDB
+        if (imageId) {
+          await imageOperations.delete(imageId);
+        }
+
+        // Update content
+        const htmlContent = contentEditableRef.current.innerHTML;
+        const textContent = contentEditableRef.current.textContent || '';
+        onUpdate({
+          content: textContent,
+          htmlContent: htmlContent
+        });
+
+        // Clear selection
+        setSelectedImage(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedImage, onUpdate]);
 
   // Notify parent when selected text changes (for side panel)
   useEffect(() => {
@@ -356,28 +392,6 @@ export function TextElementComponent({
         return; // Only handle first image
       }
     }
-  };
-
-  // Handle upload button click
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // Process first image file
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (file.type.startsWith('image/')) {
-        await insertImageFromFile(file);
-        break; // Only handle first image
-      }
-    }
-
-    // Reset input to allow selecting the same file again
-    e.target.value = '';
   };
 
   // Handle image click for selection
@@ -735,8 +749,8 @@ export function TextElementComponent({
                                  format.underline || format.strikethrough;
 
     // Handle text alignment separately as it applies to block-level elements
-    // textAlign works independently of inline formatting
-    if (format.textAlign) {
+    // Skip textAlign if inline formatting is present (color, bold, etc.)
+    if (format.textAlign && !hasInlineFormatting) {
       const range = workingRange;
       let node = range.startContainer;
       
@@ -811,21 +825,84 @@ export function TextElementComponent({
     
     span.style.cssText = styles.join('; ');
     
-    // Wrap the selected text in the styled span
+    // Apply formatting while preserving unmodified styles
     try {
       const range = workingRange;
-      const contents = range.extractContents();
-      span.appendChild(contents);
-      range.insertNode(span);
-      
+
+      // Extract contents as DOM fragment to preserve structure
+      const fragment = range.extractContents();
+
+      // Collect text segments with their existing styles (copy cssText immediately, not references)
+      const segments: Array<{ text: string; cssText: string }> = [];
+
+      const collectTextSegments = (node: Node, parentCssText: string = '') => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent || '';
+          if (text) {
+            segments.push({ text, cssText: parentCssText });
+          }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as HTMLElement;
+          // Copy cssText immediately - style object becomes invalid after DOM removal
+          const currentCssText = element.style.cssText || parentCssText;
+
+          node.childNodes.forEach(child => {
+            collectTextSegments(child, currentCssText);
+          });
+        } else if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+          // DocumentFragment: iterate children without changing parent styles
+          node.childNodes.forEach(child => {
+            collectTextSegments(child, parentCssText);
+          });
+        }
+      };
+
+      collectTextSegments(fragment);
+
+      // Create new spans with merged styles
+      const mergedFragment = document.createDocumentFragment();
+
+      segments.forEach(({ text, cssText }) => {
+        const newSpan = document.createElement('span');
+
+        // Copy existing styles first
+        if (cssText) {
+          newSpan.style.cssText = cssText;
+        }
+
+        // Override with new format properties
+        if (format.color) newSpan.style.color = format.color;
+        if (format.backgroundColor && format.backgroundColor !== 'transparent') {
+          newSpan.style.backgroundColor = format.backgroundColor;
+        }
+        if (format.fontFamily) newSpan.style.fontFamily = format.fontFamily;
+        if (format.fontSize) newSpan.style.fontSize = `${format.fontSize}px`;
+        if (format.bold) newSpan.style.fontWeight = 'bold';
+        if (format.italic) newSpan.style.fontStyle = 'italic';
+
+        // Handle text decoration merge
+        if (format.underline || format.strikethrough) {
+          const decorations: string[] = [];
+          if (format.underline) decorations.push('underline');
+          if (format.strikethrough) decorations.push('line-through');
+          newSpan.style.textDecoration = decorations.join(' ');
+        }
+
+        newSpan.appendChild(document.createTextNode(text));
+        mergedFragment.appendChild(newSpan);
+      });
+
+      // Insert the merged fragment
+      range.insertNode(mergedFragment);
+
       // Update the element
       const htmlContent = contentEditableRef.current.innerHTML;
       const textContent = contentEditableRef.current.textContent || '';
-      onUpdate({ 
+      onUpdate({
         content: textContent,
         htmlContent: htmlContent
       });
-      
+
       // Clear selection
       window.getSelection()?.removeAllRanges();
     } catch (error) {
@@ -910,27 +987,6 @@ export function TextElementComponent({
               <p className="text-blue-600 font-medium">Drop image here</p>
             </div>
           )}
-
-          {/* Upload button - shown when editing */}
-          {isEditMode && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleUploadClick}
-              className="absolute top-1 right-1 z-20 opacity-70 hover:opacity-100"
-            >
-              <Upload className="h-4 w-4" />
-            </Button>
-          )}
-
-          {/* Hidden file input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileInputChange}
-            className="hidden"
-          />
 
           <div
             ref={contentEditableRef}

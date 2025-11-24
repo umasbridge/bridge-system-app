@@ -72,7 +72,8 @@ export function TextFormatPanel({ position, selectedText, onClose, onApply, onAp
   const handleFormatChange = (newFormat: Partial<TextFormat>) => {
     const updatedFormat = { ...format, ...newFormat };
     setFormat(updatedFormat);
-    onApply(updatedFormat);
+    // Only apply the specific properties that were changed, not the entire accumulated state
+    onApply(newFormat);
   };
 
   // Different styling for side panel vs floating panel

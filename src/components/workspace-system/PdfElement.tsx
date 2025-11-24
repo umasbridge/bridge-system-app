@@ -17,15 +17,19 @@ interface PdfElementProps {
   onSelect: () => void;
   onUpdate: (updates: Partial<PdfElement>) => void;
   onDelete: () => void;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
 }
 
-export function PdfElementComponent({ 
-  element, 
-  isSelected, 
+export function PdfElementComponent({
+  element,
+  isSelected,
   containerRef,
-  onSelect, 
-  onUpdate, 
-  onDelete
+  onSelect,
+  onUpdate,
+  onDelete,
+  onInteractionStart,
+  onInteractionEnd
 }: PdfElementProps) {
   const handlePrevious = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -51,7 +55,9 @@ export function PdfElementComponent({
       actions={{
         onSelect,
         onUpdate,
-        onDelete
+        onDelete,
+        onInteractionStart,
+        onInteractionEnd
       }}
       showFormatButton={false}
     >

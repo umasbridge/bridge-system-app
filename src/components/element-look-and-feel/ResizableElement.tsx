@@ -43,22 +43,26 @@ export function ResizableElement({
 
   const handleDragStart = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    
+
     // Don't drag if clicking on buttons, inputs, or interactive elements
     if (target.closest('button, input, textarea, a, [contenteditable="true"], [role="button"]')) {
       return;
     }
-    
+
     if (target.classList.contains('resize-handle')) return;
-    
+
     if (!isSelected) return;
 
     e.stopPropagation();
     actions.onInteractionStart?.();
+
+    // Set manually positioned flag immediately when drag starts
+    actions.onUpdate({ isManuallyPositioned: true });
+
     setIsDragging(true);
     const rect = elementRef.current?.getBoundingClientRect();
     const containerRect = containerRef.current?.getBoundingClientRect();
-    
+
     if (rect && containerRect) {
       setDragOffset({
         x: e.clientX - rect.left,
@@ -135,15 +139,11 @@ export function ResizableElement({
   const handleMouseUp = (e: MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    
-    if (isDragging) {
-      actions.onUpdate({ isManuallyPositioned: true });
-    }
-    
+
     setIsDragging(false);
     setIsResizing(false);
     setResizeType(null);
-    
+
     actions.onInteractionEnd?.();
   };
 
@@ -200,6 +200,21 @@ export function ResizableElement({
       <div className="w-full h-full relative pointer-events-auto">
         {children}
       </div>
+
+      {/* Delete Button - Only visible when selected */}
+      {isSelected && (
+        <Button
+          onClick={(e) => {
+            e.stopPropagation();
+            actions.onDelete();
+          }}
+          variant="destructive"
+          size="sm"
+          className="absolute -top-10 right-0 z-50"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      )}
 
       {/* Resize Handles - Only visible when selected */}
       {isSelected && (
