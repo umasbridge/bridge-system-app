@@ -6,6 +6,10 @@ import { TextFormatPanel } from '../workspace-system/TextFormatPanel';
 import { WorkspaceHyperlinkMenu } from './WorkspaceHyperlinkMenu';
 import { useWorkspaceContext } from '../workspace-system/WorkspaceSystem';
 import { imageOperations, ImageBlob } from '../../db/database';
+import { createHistoryController, HistoryController } from '../../utils/rte/history';
+import { saveSelectionAsBookmarks, restoreSelectionFromBookmarks } from '../../utils/rte/selectionBookmarks';
+import { normalizeNodeTree } from '../../utils/rte/normalizeNodeTree';
+import { sanitizePastedHTML, getClipboardContent } from '../../utils/rte/pasteSanitizer';
 
 interface RichTextCellProps {
   value: string;
@@ -50,6 +54,7 @@ export function RichTextCell({
   const [imageResizing, setImageResizing] = useState(false);
   const imageResizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const isClickingImage = useRef(false);
+  const historyController = useRef<HistoryController>(createHistoryController());
 
   // Try to get workspace context, but don't fail if not available
   let workspaceContext: ReturnType<typeof useWorkspaceContext> | null = null;
@@ -114,9 +119,7 @@ export function RichTextCell({
         }
 
         // Update content
-        const htmlContent = contentEditableRef.current.innerHTML;
-        const textContent = contentEditableRef.current.textContent || '';
-        onChange(textContent, htmlContent);
+        commitMutation();
 
         // Clear selection
         setSelectedImage(null);
@@ -128,6 +131,38 @@ export function RichTextCell({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [selectedImage, onChange]);
+
+  // Handle undo/redo keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!contentEditableRef.current) return;
+
+      // Only handle when this cell is focused
+      if (document.activeElement !== contentEditableRef.current) return;
+
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+
+        if (e.shiftKey) {
+          // Redo
+          historyController.current.redo(contentEditableRef.current, restoreSelectionFromBookmarks);
+        } else {
+          // Undo
+          historyController.current.undo(contentEditableRef.current, restoreSelectionFromBookmarks);
+        }
+
+        // Update parent after undo/redo
+        const htmlContent = contentEditableRef.current.innerHTML;
+        const textContent = contentEditableRef.current.textContent || '';
+        onChange(textContent, htmlContent);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onChange]);
 
   // Initialize content on mount
   useEffect(() => {
@@ -164,6 +199,32 @@ export function RichTextCell({
       selection.removeAllRanges();
       selection.addRange(range);
     }
+  };
+
+  // Commit mutation pipeline: normalize, restore selection, push to history
+  const commitMutation = () => {
+    if (!contentEditableRef.current) return;
+
+    const root = contentEditableRef.current;
+
+    // 1. Save selection as bookmarks
+    const marks = saveSelectionAsBookmarks(root);
+
+    // 2. Normalize DOM tree
+    normalizeNodeTree(root);
+
+    // 3. Restore selection from bookmarks
+    if (marks) {
+      restoreSelectionFromBookmarks(root, marks);
+    }
+
+    // 4. Push to history
+    historyController.current.push(root.innerHTML, marks);
+
+    // 5. Notify parent (trigger onChange)
+    const htmlContent = root.innerHTML;
+    const textContent = root.textContent || '';
+    onChange(textContent, htmlContent);
   };
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
@@ -314,6 +375,9 @@ export function RichTextCell({
       return;
     }
 
+    // Commit mutation to capture typing changes for undo/redo
+    commitMutation();
+
     setIsFocused(false);
 
     // Notify parent that this cell is no longer focused
@@ -377,10 +441,34 @@ export function RichTextCell({
       }
     }
 
-    // For text paste, prevent default and insert as plain text
+    // For text/HTML paste, sanitize and insert
     e.preventDefault();
-    const text = e.clipboardData.getData('text/plain');
-    document.execCommand('insertText', false, text);
+
+    if (!contentEditableRef.current) return;
+
+    const html = getClipboardContent(e.nativeEvent as ClipboardEvent);
+    if (!html) return;
+
+    const sanitizedFragment = sanitizePastedHTML(html);
+
+    // Insert at current cursor position
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(sanitizedFragment);
+
+      // Move cursor to end of inserted content
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      // No selection, append to end
+      contentEditableRef.current.appendChild(sanitizedFragment);
+    }
+
+    // Commit the mutation (normalize + history)
+    commitMutation();
   };
 
   // Helper function to insert image from File
@@ -432,9 +520,7 @@ export function RichTextCell({
       contentEditableRef.current.appendChild(img);
     }
 
-    const htmlContent = contentEditableRef.current.innerHTML;
-    const textContent = contentEditableRef.current.textContent || '';
-    onChange(textContent, htmlContent);
+    commitMutation();
   };
 
   const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
@@ -530,9 +616,7 @@ export function RichTextCell({
           }
         }
 
-        const htmlContent = contentEditableRef.current.innerHTML;
-        const textContent = contentEditableRef.current.textContent || '';
-        onChange(textContent, htmlContent);
+        commitMutation();
         return;
       }
 
@@ -557,9 +641,7 @@ export function RichTextCell({
           searchNode = searchNode.parentNode;
         }
 
-        const htmlContent = contentEditableRef.current.innerHTML;
-        const textContent = contentEditableRef.current.textContent || '';
-        onChange(textContent, htmlContent);
+        commitMutation();
         return;
       }
     }
@@ -619,9 +701,7 @@ export function RichTextCell({
         range.insertNode(div);
       }
 
-      const htmlContent = contentEditableRef.current.innerHTML;
-      const textContent = contentEditableRef.current.textContent || '';
-      onChange(textContent, htmlContent);
+      commitMutation();
       window.getSelection()?.removeAllRanges();
       return;
     }
@@ -732,9 +812,7 @@ export function RichTextCell({
       // Insert the merged fragment
       range.insertNode(mergedFragment);
 
-      const htmlContent = contentEditableRef.current.innerHTML;
-      const textContent = contentEditableRef.current.textContent || '';
-      onChange(textContent, htmlContent);
+      commitMutation();
 
       window.getSelection()?.removeAllRanges();
     } catch (error) {
@@ -825,9 +903,9 @@ export function RichTextCell({
       
       // Update the element
       const htmlContent = contentEditableRef.current.innerHTML;
-      const textContent = contentEditableRef.current.textContent || '';
-      onChange(textContent, htmlContent);
-      
+
+      commitMutation();
+
       // Clear selection
       window.getSelection()?.removeAllRanges();
     } catch (error) {
@@ -889,9 +967,7 @@ export function RichTextCell({
 
       // Save updated content
       if (contentEditableRef.current) {
-        const htmlContent = contentEditableRef.current.innerHTML;
-        const textContent = contentEditableRef.current.textContent || '';
-        onChange(textContent, htmlContent);
+        commitMutation();
       }
 
       document.removeEventListener('mousemove', handleMouseMove);

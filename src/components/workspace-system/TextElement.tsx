@@ -7,6 +7,10 @@ import { TextElementFormatPanel } from './TextElementFormatPanel';
 import { WorkspaceHyperlinkMenu } from './WorkspaceHyperlinkMenu';
 import { TextFormatPanel } from './TextFormatPanel';
 import { imageOperations, ImageBlob } from '../../db/database';
+import { createHistoryController, HistoryController } from '../../utils/rte/history';
+import { saveSelectionAsBookmarks, restoreSelectionFromBookmarks } from '../../utils/rte/selectionBookmarks';
+import { normalizeNodeTree } from '../../utils/rte/normalizeNodeTree';
+import { sanitizePastedHTML, getClipboardContent } from '../../utils/rte/pasteSanitizer';
 
 export interface TextElement extends BaseElement {
   type: 'text';
@@ -38,6 +42,7 @@ export function TextElementComponent({
   onFocusChange
 }: TextElementProps) {
   const contentEditableRef = useRef<HTMLDivElement>(null);
+  const historyController = useRef<HistoryController>(createHistoryController());
   const [hasTextSelection, setHasTextSelection] = useState(false);
   const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
   const [savedSelection, setSavedSelection] = useState<Range | null>(null);
@@ -131,6 +136,41 @@ export function TextElementComponent({
     };
   }, [selectedImage, onUpdate]);
 
+  // Handle undo/redo keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!contentEditableRef.current) return;
+
+      // Only handle when this element is focused
+      if (document.activeElement !== contentEditableRef.current) return;
+
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+
+        if (e.shiftKey) {
+          // Redo
+          historyController.current.redo(contentEditableRef.current, restoreSelectionFromBookmarks);
+        } else {
+          // Undo
+          historyController.current.undo(contentEditableRef.current, restoreSelectionFromBookmarks);
+        }
+
+        // Update parent after undo/redo
+        const htmlContent = contentEditableRef.current.innerHTML;
+        const textContent = contentEditableRef.current.textContent || '';
+        onUpdate({
+          content: textContent,
+          htmlContent: htmlContent
+        });
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onUpdate]);
+
   // Notify parent when selected text changes (for side panel)
   useEffect(() => {
     if (isEditMode && onFocusChange) {
@@ -196,6 +236,35 @@ export function TextElementComponent({
       selection.removeAllRanges();
       selection.addRange(range);
     }
+  };
+
+  // Commit mutation pipeline: normalize, restore selection, push to history
+  const commitMutation = () => {
+    if (!contentEditableRef.current) return;
+
+    const root = contentEditableRef.current;
+
+    // 1. Save selection as bookmarks
+    const marks = saveSelectionAsBookmarks(root);
+
+    // 2. Normalize DOM tree
+    normalizeNodeTree(root);
+
+    // 3. Restore selection from bookmarks
+    if (marks) {
+      restoreSelectionFromBookmarks(root, marks);
+    }
+
+    // 4. Push to history
+    historyController.current.push(root.innerHTML, marks);
+
+    // 5. Notify parent (trigger onChange)
+    const htmlContent = root.innerHTML;
+    const textContent = root.textContent || '';
+    onUpdate({
+      content: textContent,
+      htmlContent: htmlContent
+    });
   };
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
@@ -279,6 +348,35 @@ export function TextElementComponent({
         return; // Only handle first image
       }
     }
+
+    // For text/HTML paste, sanitize and insert
+    e.preventDefault();
+
+    if (!contentEditableRef.current) return;
+
+    const html = getClipboardContent(e.nativeEvent as ClipboardEvent);
+    if (!html) return;
+
+    const sanitizedFragment = sanitizePastedHTML(html);
+
+    // Insert at current cursor position
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(sanitizedFragment);
+
+      // Move cursor to end of inserted content
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      // No selection, append to end
+      contentEditableRef.current.appendChild(sanitizedFragment);
+    }
+
+    // Commit the mutation (normalize + history)
+    commitMutation();
   };
 
   // Helper function to insert image from File
@@ -342,13 +440,8 @@ export function TextElementComponent({
       contentEditableRef.current.appendChild(img);
     }
 
-    // Update content
-    const htmlContent = contentEditableRef.current.innerHTML;
-    const textContent = contentEditableRef.current.textContent || '';
-    onUpdate({
-      content: textContent,
-      htmlContent: htmlContent
-    });
+    // Commit the mutation (normalize + history)
+    commitMutation();
   };
 
   // Helper to get image dimensions
@@ -550,6 +643,9 @@ export function TextElementComponent({
       return;
     }
 
+    // Commit mutation to capture typing changes for undo/redo
+    commitMutation();
+
     // Notify parent that this element is no longer focused
     if (onFocusChange) {
       onFocusChange(false);
@@ -664,18 +760,13 @@ export function TextElementComponent({
             contentEditableRef.current.appendChild(list);
           }
         }
-        
-        // Update the element
-        const htmlContent = contentEditableRef.current.innerHTML;
-        const textContent = contentEditableRef.current.textContent || '';
-        onUpdate({ 
-          content: textContent,
-          htmlContent: htmlContent
-        });
-        
+
+        // Commit the mutation (normalize + history)
+        commitMutation();
+
         return;
       }
-      
+
       // Handle indent
       if (format.indent) {
         // Find the parent block element
@@ -697,19 +788,14 @@ export function TextElementComponent({
           }
           searchNode = searchNode.parentNode;
         }
-        
-        // Update the element
-        const htmlContent = contentEditableRef.current.innerHTML;
-        const textContent = contentEditableRef.current.textContent || '';
-        onUpdate({ 
-          content: textContent,
-          htmlContent: htmlContent
-        });
-        
+
+        // Commit the mutation (normalize + history)
+        commitMutation();
+
         return;
       }
     }
-    
+
     // For other formats, try to use saved selection or current selection
     let workingRange: Range | null = savedSelection;
 
@@ -774,20 +860,15 @@ export function TextElementComponent({
         div.appendChild(contents);
         range.insertNode(div);
       }
-      
-      // Update the element
-      const htmlContent = contentEditableRef.current.innerHTML;
-      const textContent = contentEditableRef.current.textContent || '';
-      onUpdate({ 
-        content: textContent,
-        htmlContent: htmlContent
-      });
-      
+
+      // Commit the mutation (normalize + history)
+      commitMutation();
+
       // Clear selection
       window.getSelection()?.removeAllRanges();
       return;
     }
-    
+
     // Create a span with the formatting for inline styles
     const span = document.createElement('span');
     const styles: string[] = [];
@@ -895,13 +976,8 @@ export function TextElementComponent({
       // Insert the merged fragment
       range.insertNode(mergedFragment);
 
-      // Update the element
-      const htmlContent = contentEditableRef.current.innerHTML;
-      const textContent = contentEditableRef.current.textContent || '';
-      onUpdate({
-        content: textContent,
-        htmlContent: htmlContent
-      });
+      // Commit the mutation (normalize + history)
+      commitMutation();
 
       // Clear selection
       window.getSelection()?.removeAllRanges();
@@ -935,15 +1011,10 @@ export function TextElementComponent({
       const contents = range.extractContents();
       link.appendChild(contents);
       range.insertNode(link);
-      
-      // Update the element
-      const htmlContent = contentEditableRef.current.innerHTML;
-      const textContent = contentEditableRef.current.textContent || '';
-      onUpdate({ 
-        content: textContent,
-        htmlContent: htmlContent
-      });
-      
+
+      // Commit the mutation (normalize + history)
+      commitMutation();
+
       // Clear selection
       window.getSelection()?.removeAllRanges();
     } catch (error) {

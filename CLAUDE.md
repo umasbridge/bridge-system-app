@@ -83,7 +83,7 @@ Interactive workspace web app for bridge partnerships to collaboratively build a
 - ✅ Visual nested bidding tables (unique, better than text)
 - ✅ 3-mode hyperlink navigation (more sophisticated than BridgeDocs)
 - ✅ PDF integration
-- ❌ No backend persistence yet (MVP gap)
+- ✅ IndexedDB persistence (local-first, offline-capable)
 - ❌ No collaboration features yet (roadmap)
 - ❌ No template library yet (roadmap)
 
@@ -109,29 +109,39 @@ Interactive workspace web app for bridge partnerships to collaboratively build a
    - Location: ResizableElement.tsx:188-196
    - Result: Blue border now visible on all 4 sides uniformly
 
-4. **No persistence layer** - NEXT PRIORITY
-   - All state lost on refresh
-   - MVP blocker
-
-5. **Editor Stability Implementation** - NOT STARTED
-   - Status: Phase 1 of 8 - Ready to implement DOM normalization engine
+4. **Editor Stability Implementation** - IN PROGRESS (Phases 1-7 Complete ✅)
+   - Status: Phases 1-7 complete, Phase 8 (testing) pending
    - Last Updated: 2025-11-24
-   - Next: Implement `src/utils/rte/normalizeNodeTree.ts` (flatten nested spans, merge adjacent identical spans, canonicalize styles)
-   - Location: See EDITOR_STABILITY_PLAN.md for full 8-phase implementation plan
+   - Completed:
+     - ✅ All 5 utility files (`normalizeNodeTree.ts`, `canonicalizeStyle.ts`, `selectionBookmarks.ts`, `history.ts`, `pasteSanitizer.ts`)
+     - ✅ Integrated into RichTextCell and TextElement
+     - ✅ Undo/redo with Cmd/Ctrl+Z
+     - ✅ Paste sanitization (Google Docs/Word)
+     - ✅ Dev server compiles without errors
+   - Next: Manual browser testing and acceptance tests
+   - Location: See EDITOR_STABILITY_PLAN.md for full details
 
 ## File Structure
 ```
 src/
 ├── components/
 │   ├── workspace-system/         # Main app (multi-tab workspaces)
-│   │   ├── TextElement.tsx       # Rich text with formatting ✅ FIXED
+│   │   ├── TextElement.tsx       # Rich text with formatting + stability layer ✅
 │   │   ├── TextFormatPanel.tsx   # Font, colors, alignment, lists
 │   │   ├── WorkspaceEditor.tsx   # Canvas for elements
 │   │   └── WorkspaceSystem.tsx   # Tab management + hyperlinks
-│   ├── bidding-table/            # Nested 2-column tables
 │   ├── systems-table/            # Hierarchical table with hyperlinks
+│   │   └── RichTextCell.tsx      # Table cell editor + stability layer ✅
+│   ├── bidding-table/            # Nested 2-column tables
 │   ├── insert-text/              # Alternative text component
 │   └── ui/                       # 50+ shadcn/ui primitives
+├── utils/
+│   └── rte/                      # Rich Text Editor stability utilities ✅ NEW
+│       ├── normalizeNodeTree.ts  # DOM normalization engine
+│       ├── canonicalizeStyle.ts  # Style normalization
+│       ├── selectionBookmarks.ts # Selection preservation
+│       ├── history.ts            # Undo/redo controller
+│       └── pasteSanitizer.ts     # Paste sanitization
 └── App.tsx                       # Entry point (WorkspaceProvider)
 ```
 
