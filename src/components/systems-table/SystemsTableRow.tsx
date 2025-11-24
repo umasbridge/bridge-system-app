@@ -121,17 +121,11 @@ export function SystemsTableRow({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        {/* Indent Space - no left border to create visual break */}
+        {/* Indent Space - empty vacant space with no borders */}
         {indentWidth > 0 && (
           <div
             style={{
-              width: `${indentWidth}px`,
-              borderBottom: gridlines?.enabled
-                ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
-                : '1px solid #D1D5DB',
-              borderRight: gridlines?.enabled
-                ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
-                : '1px solid #D1D5DB'
+              width: `${indentWidth}px`
             }}
             className="flex-shrink-0"
           />
