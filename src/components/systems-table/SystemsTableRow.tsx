@@ -164,9 +164,9 @@ export function SystemsTableRow({
             borderLeft: gridlines?.enabled
               ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
               : '1px solid #D1D5DB',
-            borderTop: level === 0 ? (gridlines?.enabled
+            borderTop: gridlines?.enabled
               ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
-              : '1px solid #D1D5DB') : 'none',
+              : '1px solid #D1D5DB',
           }}
         >
           <div className="pl-1.5 pr-1 py-1.5 flex items-center relative" data-column-type="bid">
