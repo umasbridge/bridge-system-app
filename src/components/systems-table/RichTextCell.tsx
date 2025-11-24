@@ -404,6 +404,12 @@ export function RichTextCell({
     // Commit mutation to capture typing changes for undo/redo
     commitMutation();
 
+    // Explicitly clear the text selection/cursor
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+    }
+
     setIsFocused(false);
 
     // Notify parent that this cell is no longer focused
@@ -589,10 +595,148 @@ export function RichTextCell({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Handle Enter key in lists
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+
+      const range = selection.getRangeAt(0);
+      let node = range.startContainer;
+
+      // Find parent list item
+      let listItem: HTMLElement | null = null;
+      let searchNode = node;
+
+      while (searchNode && searchNode !== contentEditableRef.current) {
+        if (searchNode instanceof HTMLElement && searchNode.tagName === 'LI') {
+          listItem = searchNode;
+          break;
+        }
+        searchNode = searchNode.parentNode;
+      }
+
+      // If we're in a list item, handle Enter specially
+      if (listItem) {
+        e.preventDefault();
+
+        // Check if current list item is empty
+        const isEmpty = !listItem.textContent?.trim();
+
+        if (isEmpty) {
+          // Empty list item - exit the list
+          const list = listItem.parentElement;
+          if (list && (list.tagName === 'UL' || list.tagName === 'OL')) {
+            // Create a new div after the list
+            const div = document.createElement('div');
+            div.innerHTML = '<br>'; // Placeholder for cursor
+
+            // If this is the only item, replace the entire list
+            if (list.children.length === 1) {
+              list.replaceWith(div);
+            } else {
+              // Remove this item and insert div after the list
+              listItem.remove();
+              if (list.parentElement) {
+                list.parentElement.insertBefore(div, list.nextSibling);
+              }
+            }
+
+            // Move cursor to the new div
+            const newRange = document.createRange();
+            newRange.setStart(div, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          }
+        } else {
+          // Non-empty list item - create new list item
+          const newLi = document.createElement('li');
+          newLi.style.display = 'list-item';
+
+          // Insert content after cursor into new list item if any
+          const afterCursor = range.cloneRange();
+          afterCursor.setEndAfter(listItem.lastChild || listItem);
+          const fragment = afterCursor.extractContents();
+
+          // If fragment has content, put it in the new item
+          if (fragment.textContent?.trim()) {
+            newLi.appendChild(fragment);
+          } else {
+            newLi.innerHTML = '<br>'; // Placeholder
+          }
+
+          // Insert new list item after current one
+          if (listItem.nextSibling) {
+            listItem.parentElement?.insertBefore(newLi, listItem.nextSibling);
+          } else {
+            listItem.parentElement?.appendChild(newLi);
+          }
+
+          // Move cursor to start of new list item
+          const newRange = document.createRange();
+          newRange.setStart(newLi, 0);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
+
+        // Commit the mutation
+        commitMutation();
+      }
+    }
+  };
+
   const applyFormat = (format: any) => {
     if (!contentEditableRef.current) return;
 
     contentEditableRef.current.focus();
+
+    // Handle text alignment first - it applies to the entire line/block based on cursor position
+    if (format.textAlign) {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+
+      const range = selection.getRangeAt(0);
+      let node = range.startContainer;
+
+      // Find the parent block element containing the cursor
+      let blockElement: HTMLElement | null = null;
+      let searchNode = node;
+
+      while (searchNode && searchNode !== contentEditableRef.current) {
+        if (searchNode instanceof HTMLElement &&
+            (searchNode.tagName === 'DIV' || searchNode.tagName === 'P' || searchNode.tagName === 'H1' ||
+             searchNode.tagName === 'H2' || searchNode.tagName === 'H3' || searchNode.tagName === 'H4' ||
+             searchNode.tagName === 'H5' || searchNode.tagName === 'H6' || searchNode.tagName === 'LI')) {
+          blockElement = searchNode;
+          break;
+        }
+        searchNode = searchNode.parentNode;
+      }
+
+      // Apply alignment to the block element
+      if (blockElement) {
+        blockElement.style.textAlign = format.textAlign;
+      } else {
+        // If no block element found, apply to the contentEditable itself
+        contentEditableRef.current.style.textAlign = format.textAlign;
+      }
+
+      // Commit the mutation
+      commitMutation();
+
+      // Check if we have other formatting to apply
+      const hasOtherFormatting = format.color || format.backgroundColor || format.fontFamily ||
+                                   format.fontSize || format.bold || format.italic ||
+                                   format.underline || format.strikethrough;
+
+      // If only alignment, we're done
+      if (!hasOtherFormatting) {
+        return;
+      }
+      // Otherwise, continue to apply other formatting below
+    }
 
     // Handle list and indent operations (work with cursor position, not saved selection)
     if (format.listType || format.indent) {
@@ -602,20 +746,45 @@ export function RichTextCell({
       const range = selection.getRangeAt(0);
       let node = range.startContainer;
 
-      // Handle list creation
+      // Handle list creation/toggle
       if (format.listType) {
+        let listElement: HTMLElement | null = null;
+        let listItemElement: HTMLElement | null = null;
         let blockElement: HTMLElement | null = null;
         let searchNode = node;
 
         while (searchNode && searchNode !== contentEditableRef.current) {
-          if (searchNode instanceof HTMLElement &&
-              (searchNode.tagName === 'DIV' || searchNode.tagName === 'P' || searchNode.tagName === 'LI')) {
-            blockElement = searchNode as HTMLElement;
-            break;
+          if (searchNode instanceof HTMLElement) {
+            if (searchNode.tagName === 'UL' || searchNode.tagName === 'OL') {
+              listElement = searchNode;
+            }
+            if (searchNode.tagName === 'LI') {
+              listItemElement = searchNode;
+            }
+            if (searchNode.tagName === 'DIV' || searchNode.tagName === 'P') {
+              blockElement = searchNode;
+            }
           }
           searchNode = searchNode.parentNode;
         }
 
+        // Toggle behavior: If already in a list, remove it
+        if (listItemElement && listElement) {
+          const content = listItemElement.innerHTML;
+          const div = document.createElement('div');
+          div.innerHTML = content;
+
+          if (listElement.children.length === 1) {
+            listElement.replaceWith(div);
+          } else {
+            listItemElement.replaceWith(div);
+          }
+
+          commitMutation();
+          return;
+        }
+
+        // Create list if not already in one
         if (format.listType === 'bullet' || format.listType === 'number') {
           const listTag = format.listType === 'bullet' ? 'ul' : 'ol';
           const list = document.createElement(listTag);
@@ -638,6 +807,17 @@ export function RichTextCell({
             list.appendChild(li);
             contentEditableRef.current.innerHTML = '';
             contentEditableRef.current.appendChild(list);
+          }
+
+          // Position cursor at the end of the list item
+          const selection = window.getSelection();
+          if (selection) {
+            const range = document.createRange();
+            // Set cursor at the end of the list item content
+            range.selectNodeContents(li);
+            range.collapse(false); // Collapse to end
+            selection.removeAllRanges();
+            selection.addRange(range);
           }
         }
 
@@ -697,39 +877,6 @@ export function RichTextCell({
     }
 
     if (!workingRange) return;
-
-    const hasInlineFormatting = format.color || format.backgroundColor || format.fontFamily ||
-                                 format.fontSize || format.bold || format.italic ||
-                                 format.underline || format.strikethrough;
-
-    // Handle text alignment separately - but skip if we have inline formatting to apply
-    if (format.textAlign && !hasInlineFormatting) {
-      const range = workingRange;
-      let node = range.startContainer;
-
-      while (node && node !== contentEditableRef.current) {
-        if (node instanceof HTMLElement &&
-            (node.tagName === 'DIV' || node.tagName === 'P' || node.tagName === 'H1' ||
-             node.tagName === 'H2' || node.tagName === 'H3' || node.tagName === 'H4' ||
-             node.tagName === 'H5' || node.tagName === 'H6')) {
-          (node as HTMLElement).style.textAlign = format.textAlign;
-          break;
-        }
-        node = node.parentNode;
-      }
-
-      if (!node || node === contentEditableRef.current) {
-        const div = document.createElement('div');
-        div.style.textAlign = format.textAlign;
-        const contents = range.extractContents();
-        div.appendChild(contents);
-        range.insertNode(div);
-      }
-
-      commitMutation();
-      window.getSelection()?.removeAllRanges();
-      return;
-    }
 
     // Handle inline formatting
     const span = document.createElement('span');
@@ -1035,6 +1182,7 @@ export function RichTextCell({
           onInput={handleInput}
           onClick={handleClick}
           onMouseDown={handleMouseDown}
+          onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
           onPaste={handlePaste}

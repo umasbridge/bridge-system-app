@@ -12,6 +12,7 @@ export interface Size {
 
 export interface BaseElement {
   id: string;
+  name?: string; // Optional name for searching/referencing
   position: Position;
   size: Size;
   zIndex: number;
@@ -37,6 +38,7 @@ export interface ResizableElementProps {
   containerRef: React.RefObject<HTMLDivElement>;
   children: React.ReactNode;
   showFormatButton?: boolean;
+  showDeleteButton?: boolean; // Show delete button below element (default true)
   minHeight?: number; // Minimum height for manual resize
   selectionBorderInset?: number; // Inset the selection border by this many pixels from edges
   [key: string]: any; // Allow additional props to be passed through

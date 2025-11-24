@@ -9,6 +9,7 @@ import { TextElementComponent, TextElement } from './TextElement';
 import { TextFormatPanel } from './TextFormatPanel';
 import { TextElementFormatPanel } from './TextElementFormatPanel';
 import { PdfElementComponent } from './PdfElement';
+import { ElementNameDialog } from './ElementNameDialog';
 import * as pdfjsLib from 'pdfjs-dist';
 import { elementOperations, WorkspaceElement as DBWorkspaceElement } from '../../db/database';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -23,6 +24,8 @@ interface SystemsTableElement extends BaseElement {
   type: 'systems-table';
   initialRows?: RowData[];
   gridlines?: GridlineOptions;
+  levelWidths?: { [level: number]: number };
+  meaningWidth?: number;
 }
 
 
@@ -55,6 +58,7 @@ interface WorkspaceEditorProps {
   initialTitle?: string;
   onTitleChange?: (title: string) => void;
   onClose?: () => void;
+  onSaveAndClose?: () => void;
   existingWorkspaces?: string[];
   onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => void;
   hideControls?: boolean;
@@ -63,11 +67,12 @@ interface WorkspaceEditorProps {
 
 const ELEMENT_SPACING = 10; // Consistent spacing between all elements
 
-export function WorkspaceEditor({ 
-  workspaceId, 
+export function WorkspaceEditor({
+  workspaceId,
   initialTitle = 'Untitled Workspace',
   onTitleChange,
   onClose,
+  onSaveAndClose,
   existingWorkspaces = [],
   onNavigateToWorkspace,
   hideControls = false,
@@ -91,6 +96,11 @@ export function WorkspaceEditor({
   const cellApplyHyperlinkRef = useRef<((workspaceName: string, linkType: 'comment' | 'new-page') => void) | null>(null);
   const [textElementSelectedText, setTextElementSelectedText] = useState<string>('');
   const [cellSelectedText, setCellSelectedText] = useState<string>('');
+  const [showNameDialog, setShowNameDialog] = useState(false);
+  const [pendingElement, setPendingElement] = useState<{
+    type: 'systems-table' | 'text' | 'image' | 'pdf';
+    data?: any;
+  } | null>(null);
 
   // Load elements from DB on mount
   useEffect(() => {
@@ -99,7 +109,8 @@ export function WorkspaceEditor({
       const dbElements = await elementOperations.getByWorkspaceId(workspaceId);
 
       if (dbElements.length === 0 && initialElements.length === 0) {
-        // Create default text element with "Title" content
+        // Create default text element with workspace name (bold and centered)
+        const workspaceName = initialTitle || 'Title';
         const defaultElement: TextElement & { workspaceId: string } = {
           id: 'title-' + Math.random().toString(36).substring(7),
           workspaceId,
@@ -107,13 +118,40 @@ export function WorkspaceEditor({
           position: { x: 20, y: 20 },
           size: { width: 600, height: 34 },
           zIndex: 0,
-          content: 'Title',
-          htmlContent: '<div>Title</div>',
+          content: workspaceName,
+          htmlContent: `<div style="text-align: center;"><span style="font-weight: bold;">${workspaceName}</span></div>`,
           borderColor: 'transparent',
           borderWidth: 0
         };
         await elementOperations.create(defaultElement);
         setElements([defaultElement]);
+
+        // Auto-focus the default title element's contentEditable after a short delay
+        setTimeout(() => {
+          const textElements = document.querySelectorAll('[data-text-element-id]');
+          textElements.forEach(el => {
+            const elementId = el.getAttribute('data-text-element-id');
+            if (elementId === defaultElement.id) {
+              const contentEditable = el.querySelector('[contenteditable="true"]');
+              if (contentEditable instanceof HTMLElement) {
+                contentEditable.focus();
+                // Move cursor to end
+                const range = document.createRange();
+                const selection = window.getSelection();
+                if (contentEditable.childNodes.length > 0) {
+                  const lastNode = contentEditable.childNodes[contentEditable.childNodes.length - 1];
+                  range.selectNodeContents(lastNode);
+                  range.collapse(false);
+                } else {
+                  range.selectNodeContents(contentEditable);
+                  range.collapse(false);
+                }
+                selection?.removeAllRanges();
+                selection?.addRange(range);
+              }
+            }
+          });
+        }, 200);
       } else if (dbElements.length > 0) {
         setElements(dbElements);
       } else if (initialElements.length > 0) {
@@ -126,6 +164,38 @@ export function WorkspaceEditor({
 
     loadElements();
   }, [workspaceId]);
+
+  // Focus the contentEditable element when focusedTextElementId changes
+  useEffect(() => {
+    if (focusedTextElementId && containerRef.current) {
+      // Find the text element's contentEditable div
+      const textElements = containerRef.current.querySelectorAll('[data-text-element-id]');
+      textElements.forEach(el => {
+        const elementId = el.getAttribute('data-text-element-id');
+        if (elementId === focusedTextElementId) {
+          const contentEditable = el.querySelector('[contenteditable="true"]');
+          if (contentEditable instanceof HTMLElement) {
+            // Focus and place cursor at the end
+            contentEditable.focus();
+
+            // Move cursor to end of content
+            const range = document.createRange();
+            const selection = window.getSelection();
+            if (contentEditable.childNodes.length > 0) {
+              const lastNode = contentEditable.childNodes[contentEditable.childNodes.length - 1];
+              range.selectNodeContents(lastNode);
+              range.collapse(false);
+            } else {
+              range.selectNodeContents(contentEditable);
+              range.collapse(false);
+            }
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+          }
+        }
+      });
+    }
+  }, [focusedTextElementId]);
 
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle);
@@ -154,46 +224,170 @@ export function WorkspaceEditor({
     return { x: 20, y: maxBottom + spacing };
   };
 
-  const handleInsertSystemsTable = async () => {
-    const position = getNextPosition();
-    // Calculate height based on initial row count (default 1 row = ~100px with padding)
-    const initialRowCount = 1;
-    const calculatedHeight = Math.max(100, initialRowCount * 80 + 20);
+  const createElementWithName = async (name: string) => {
+    if (!pendingElement) return;
 
-    const newElement: SystemsTableElement & { workspaceId: string } = {
-      id: Math.random().toString(36).substring(7),
-      workspaceId,
-      type: 'systems-table',
-      position,
-      size: { width: 680, height: calculatedHeight },
-      zIndex: elements.length,
-      borderColor: 'transparent',
-      borderWidth: 0,
-      gridlines: {
-        enabled: false,
-        color: '#D1D5DB',
-        width: 1
+    const position = getNextPosition();
+    let newElementId: string = '';
+
+    switch (pendingElement.type) {
+      case 'systems-table': {
+        const initialRowCount = 1;
+        const calculatedHeight = Math.max(100, initialRowCount * 80 + 20);
+        newElementId = Math.random().toString(36).substring(7);
+        const newElement: SystemsTableElement & { workspaceId: string } = {
+          id: newElementId,
+          workspaceId,
+          name: name || undefined,
+          type: 'systems-table',
+          position,
+          size: { width: 680, height: calculatedHeight },
+          zIndex: elements.length,
+          borderColor: 'transparent',
+          borderWidth: 0,
+          gridlines: {
+            enabled: false,
+            color: '#D1D5DB',
+            width: 1
+          },
+          levelWidths: { 0: 80 },
+          meaningWidth: 680
+        };
+        await elementOperations.create(newElement);
+        setElements([...elements, newElement]);
+        break;
       }
-    };
-    await elementOperations.create(newElement);
-    setElements([...elements, newElement]);
+      case 'text': {
+        newElementId = Math.random().toString(36).substring(7);
+        const newElement: TextElement & { workspaceId: string } = {
+          id: newElementId,
+          workspaceId,
+          name: name || undefined,
+          type: 'text',
+          position,
+          size: { width: 600, height: 34 },
+          zIndex: elements.length,
+          content: '',
+          borderColor: 'transparent',
+          borderWidth: 0
+        };
+        await elementOperations.create(newElement);
+        setElements([...elements, newElement]);
+        break;
+      }
+      case 'image': {
+        const { src, alt } = pendingElement.data;
+        newElementId = Math.random().toString(36).substring(7);
+        const newElement: ImageElement & { workspaceId: string } = {
+          id: newElementId,
+          workspaceId,
+          name: name || undefined,
+          type: 'image',
+          position,
+          size: { width: 400, height: 300 },
+          zIndex: elements.length,
+          src,
+          alt,
+          borderColor: 'transparent',
+          borderWidth: 0
+        };
+        await elementOperations.create(newElement);
+        setElements([...elements, newElement]);
+        break;
+      }
+      case 'pdf': {
+        const { fileName, totalPages, pageImages } = pendingElement.data;
+        newElementId = Math.random().toString(36).substring(7);
+        const newElement: PdfElement & { workspaceId: string } = {
+          id: newElementId,
+          workspaceId,
+          name: name || undefined,
+          type: 'pdf',
+          position,
+          size: { width: 600, height: 800 },
+          zIndex: elements.length,
+          fileName,
+          currentPage: 1,
+          totalPages,
+          pageImages,
+          borderColor: 'transparent',
+          borderWidth: 0
+        };
+        await elementOperations.create(newElement);
+        setElements([...elements, newElement]);
+        break;
+      }
+    }
+
+    setShowNameDialog(false);
+    setPendingElement(null);
+
+    // Auto-focus text elements' contentEditable after creation
+    if (pendingElement.type === 'text') {
+      setTimeout(() => {
+        const textElements = document.querySelectorAll('[data-text-element-id]');
+        textElements.forEach(el => {
+          const elementId = el.getAttribute('data-text-element-id');
+          if (elementId === newElementId) {
+            const contentEditable = el.querySelector('[contenteditable="true"]');
+            if (contentEditable instanceof HTMLElement) {
+              contentEditable.focus();
+              // Move cursor to end
+              const range = document.createRange();
+              const selection = window.getSelection();
+              range.selectNodeContents(contentEditable);
+              range.collapse(false);
+              selection?.removeAllRanges();
+              selection?.addRange(range);
+            }
+          }
+        });
+      }, 200);
+    }
   };
 
-  const handleInsertText = async () => {
-    const position = getNextPosition();
-    const newElement: TextElement & { workspaceId: string } = {
-      id: Math.random().toString(36).substring(7),
-      workspaceId,
-      type: 'text',
-      position,
-      size: { width: 600, height: 34 },
-      zIndex: elements.length,
-      content: '',
-      borderColor: 'transparent',
-      borderWidth: 0
-    };
-    await elementOperations.create(newElement);
-    setElements([...elements, newElement]);
+  const handleInsertSystemsTable = () => {
+    // Blur all contentEditable elements before showing dialog
+    const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+    contentEditables.forEach(el => {
+      if (el instanceof HTMLElement) {
+        el.blur();
+      }
+    });
+
+    // Clear any text selection
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+    }
+
+    // Show dialog after a small delay to ensure blur completes
+    setTimeout(() => {
+      setPendingElement({ type: 'systems-table' });
+      setShowNameDialog(true);
+    }, 50);
+  };
+
+  const handleInsertText = () => {
+    // Blur all contentEditable elements before showing dialog
+    const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+    contentEditables.forEach(el => {
+      if (el instanceof HTMLElement) {
+        el.blur();
+      }
+    });
+
+    // Clear any text selection
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+    }
+
+    // Show dialog after a small delay to ensure blur completes
+    setTimeout(() => {
+      setPendingElement({ type: 'text' });
+      setShowNameDialog(true);
+    }, 50);
   };
 
   const handleInsertImage = () => {
@@ -205,21 +399,31 @@ export function WorkspaceEditor({
       if (file) {
         const reader = new FileReader();
         reader.onload = async (event) => {
-          const position = getNextPosition();
-          const newElement: ImageElement & { workspaceId: string } = {
-            id: Math.random().toString(36).substring(7),
-            workspaceId,
-            type: 'image',
-            position,
-            size: { width: 400, height: 300 },
-            zIndex: elements.length,
-            src: event.target?.result as string,
-            alt: file.name,
-            borderColor: 'transparent',
-            borderWidth: 0
-          };
-          await elementOperations.create(newElement);
-          setElements([...elements, newElement]);
+          // Blur all contentEditable elements before showing dialog
+          const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+          contentEditables.forEach(el => {
+            if (el instanceof HTMLElement) {
+              el.blur();
+            }
+          });
+
+          // Clear any text selection
+          const selection = window.getSelection();
+          if (selection) {
+            selection.removeAllRanges();
+          }
+
+          // Show dialog after a small delay to ensure blur completes
+          setTimeout(() => {
+            setPendingElement({
+              type: 'image',
+              data: {
+                src: event.target?.result as string,
+                alt: file.name
+              }
+            });
+            setShowNameDialog(true);
+          }, 50);
         };
         reader.readAsDataURL(file);
       }
@@ -234,8 +438,6 @@ export function WorkspaceEditor({
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file && file.type === 'application/pdf') {
-        const position = getNextPosition();
-        console.log('PDF position:', position, 'elements count:', elements.length);
         try {
           const arrayBuffer = await file.arrayBuffer();
 
@@ -260,22 +462,32 @@ export function WorkspaceEditor({
             }
           }
 
-          const newElement: PdfElement & { workspaceId: string } = {
-            id: Math.random().toString(36).substring(7),
-            workspaceId,
-            type: 'pdf',
-            position,
-            size: { width: 600, height: 800 },
-            zIndex: elements.length,
-            fileName: file.name,
-            currentPage: 1,
-            totalPages: pdf.numPages,
-            pageImages,
-            borderColor: 'transparent',
-            borderWidth: 0
-          };
-          await elementOperations.create(newElement);
-          setElements([...elements, newElement]);
+          // Blur all contentEditable elements before showing dialog
+          const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+          contentEditables.forEach(el => {
+            if (el instanceof HTMLElement) {
+              el.blur();
+            }
+          });
+
+          // Clear any text selection
+          const selection = window.getSelection();
+          if (selection) {
+            selection.removeAllRanges();
+          }
+
+          // Show dialog after a small delay to ensure blur completes
+          setTimeout(() => {
+            setPendingElement({
+              type: 'pdf',
+              data: {
+                fileName: file.name,
+                totalPages: pdf.numPages,
+                pageImages
+              }
+            });
+            setShowNameDialog(true);
+          }, 50);
         } catch (error) {
           console.error('Error processing PDF:', error);
           console.error('Error details:', error instanceof Error ? error.message : String(error));
@@ -362,7 +574,22 @@ export function WorkspaceEditor({
 
   const handleContainerClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
+      // Explicitly blur all contentEditable elements to remove cursor
+      const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+      contentEditables.forEach(el => {
+        if (el instanceof HTMLElement) {
+          el.blur();
+        }
+      });
+
+      // Also blur the currently active element
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+
       setSelectedId(null);
+      setFocusedTextElementId(null);
+      setFocusedCellId(null);
     }
   };
 
@@ -450,7 +677,7 @@ export function WorkspaceEditor({
         <>
       <div
         ref={containerRef}
-        className="flex-1 relative overflow-auto bg-white"
+        className="flex-1 relative overflow-auto bg-white p-8"
         onClick={handleContainerClick}
       >
         {elements.map((element) => {
@@ -464,13 +691,24 @@ export function WorkspaceEditor({
                 element={element}
                 isSelected={isTableSelected}
                 containerRef={containerRef}
-                showFormatButton={true}
+                showFormatButton={false}
+                showDeleteButton={false}
                 minHeight={50}
                 actions={{
-                  onSelect: () => setSelectedId(element.id),
+                  onSelect: () => {
+                    // Explicitly blur all contentEditable elements to remove cursor
+                    const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+                    contentEditables.forEach(el => {
+                      if (el instanceof HTMLElement) {
+                        el.blur();
+                      }
+                    });
+                    setSelectedId(element.id);
+                    setFocusedCellId(null); // Clear cell edit mode when selecting table
+                    setFormatPanelId(element.id); // Show format panel when selected
+                  },
                   onUpdate: (updates) => handleUpdate(element.id, updates),
                   onDelete: () => handleDelete(element.id),
-                  onFormat: () => setFormatPanelId(element.id),
                   onInteractionStart: () => setIsInteracting(true),
                   onInteractionEnd: () => setIsInteracting(false)
                 }}
@@ -482,6 +720,14 @@ export function WorkspaceEditor({
                     border: element.borderWidth && element.borderWidth > 0 && element.borderColor !== 'transparent'
                       ? `${element.borderWidth}px solid ${element.borderColor}`
                       : 'none'
+                  }}
+                  onClick={(e) => {
+                    // When clicking inside the table, deselect it
+                    // The ResizableElement will prevent this if clicking on borders
+                    if (selectedId === element.id) {
+                      setSelectedId(null);
+                      setFormatPanelId(null); // Also close format panel
+                    }
                   }}
                 >
                   <SystemsTable
@@ -534,7 +780,17 @@ export function WorkspaceEditor({
                 element={textElement}
                 isSelected={isElementSelected}
                 containerRef={containerRef}
-                onSelect={() => setSelectedId(element.id)}
+                onSelect={() => {
+                  // Explicitly blur all contentEditable elements to remove cursor
+                  const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+                  contentEditables.forEach(el => {
+                    if (el instanceof HTMLElement) {
+                      el.blur();
+                    }
+                  });
+                  setSelectedId(element.id);
+                  setFocusedTextElementId(null); // Clear edit mode when selecting element
+                }}
                 onUpdate={(updates) => handleUpdate(element.id, updates)}
                 onDelete={() => handleDelete(element.id)}
                 existingWorkspaces={existingWorkspaces}
@@ -573,15 +829,26 @@ export function WorkspaceEditor({
                 isSelected={selectedId === element.id}
                 containerRef={containerRef}
                 actions={{
-                  onSelect: () => setSelectedId(element.id),
+                  onSelect: () => {
+                    // Explicitly blur all contentEditable elements to remove cursor
+                    const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+                    contentEditables.forEach(el => {
+                      if (el instanceof HTMLElement) {
+                        el.blur();
+                      }
+                    });
+                    setSelectedId(element.id);
+                    setFocusedTextElementId(null); // Clear any text edit mode
+                    setFocusedCellId(null); // Clear any cell edit mode
+                  },
                   onUpdate: (updates) => handleUpdate(element.id, updates),
                   onDelete: () => handleDelete(element.id),
                   onInteractionStart: () => setIsInteracting(true),
                   onInteractionEnd: () => setIsInteracting(false)
                 }}
               >
-                <img 
-                  src={imageElement.src} 
+                <img
+                  src={imageElement.src}
                   alt={imageElement.alt || 'Uploaded image'}
                   className="w-full h-full object-contain"
                   style={{
@@ -602,7 +869,18 @@ export function WorkspaceEditor({
                 element={pdfElement}
                 isSelected={selectedId === element.id}
                 containerRef={containerRef}
-                onSelect={() => setSelectedId(element.id)}
+                onSelect={() => {
+                  // Explicitly blur all contentEditable elements to remove cursor
+                  const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+                  contentEditables.forEach(el => {
+                    if (el instanceof HTMLElement) {
+                      el.blur();
+                    }
+                  });
+                  setSelectedId(element.id);
+                  setFocusedTextElementId(null); // Clear any text edit mode
+                  setFocusedCellId(null); // Clear any cell edit mode
+                }}
                 onUpdate={(updates) => handleUpdate(element.id, updates)}
                 onDelete={() => handleDelete(element.id)}
                 onInteractionStart={() => setIsInteracting(true)}
@@ -662,6 +940,12 @@ export function WorkspaceEditor({
             element={selectedElement as SystemsTableElement}
             onUpdate={(updates) => handleUpdate(formatPanelId, updates)}
             onClose={() => setFormatPanelId(null)}
+            onDelete={() => {
+              if (formatPanelId) {
+                handleDelete(formatPanelId);
+                setFormatPanelId(null);
+              }
+            }}
           />
         )}
 
@@ -742,24 +1026,45 @@ export function WorkspaceEditor({
 
       {/* Bottom Button Bar */}
       {!hideControls && (
-        <div className="bg-white border-t border-gray-200 px-8 py-4 flex-shrink-0">
-          <div className="flex gap-2">
-            <Button onClick={handleInsertSystemsTable} variant="outline">
-              Insert Systems Table
-            </Button>
-            <Button onClick={handleInsertText} variant="outline">
-              Insert Text
-            </Button>
-            <Button onClick={handleUploadFile} variant="outline">
-              Upload File
-            </Button>
-            <Button onClick={handleInsertImage} variant="outline">
-              Insert Image
-            </Button>
+        <div className="bg-white border-t border-gray-200 px-8 py-4 flex-shrink-0 sticky bottom-0">
+          <div className="flex gap-2 justify-between items-center">
+            <div className="flex gap-2">
+              <Button onClick={handleInsertSystemsTable} variant="outline">
+                Insert Systems Table
+              </Button>
+              <Button onClick={handleInsertText} variant="outline">
+                Insert Text
+              </Button>
+              <Button onClick={handleUploadFile} variant="outline">
+                Upload File
+              </Button>
+              <Button onClick={handleInsertImage} variant="outline">
+                Insert Image
+              </Button>
+            </div>
+            {onSaveAndClose && (
+              <Button onClick={onSaveAndClose} variant="default">
+                Save and Close
+              </Button>
+            )}
           </div>
         </div>
       )}
         </>
+      )}
+
+      {/* Element Name Dialog */}
+      {showNameDialog && pendingElement && (
+        <ElementNameDialog
+          elementType={pendingElement.type === 'systems-table' ? 'Systems Table' :
+                       pendingElement.type === 'text' ? 'Text' :
+                       pendingElement.type === 'image' ? 'Image' : 'PDF'}
+          onConfirm={createElementWithName}
+          onCancel={() => {
+            setShowNameDialog(false);
+            setPendingElement(null);
+          }}
+        />
       )}
     </div>
   );

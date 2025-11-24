@@ -21,6 +21,7 @@ interface SystemsTableFormatPanelProps {
   element: SystemsTableElement;
   onUpdate: (updates: Partial<SystemsTableElement>) => void;
   onClose: () => void;
+  onDelete?: () => void;
 }
 
 const PRESET_COLORS = [
@@ -28,7 +29,7 @@ const PRESET_COLORS = [
   '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#FFFFFF'
 ];
 
-export function SystemsTableFormatPanel({ element, onUpdate, onClose }: SystemsTableFormatPanelProps) {
+export function SystemsTableFormatPanel({ element, onUpdate, onClose, onDelete }: SystemsTableFormatPanelProps) {
   const initialBorderWidth = element.borderWidth ?? 2;
   const [borderEnabled, setBorderEnabled] = useState(initialBorderWidth > 0);
   const [borderColor, setBorderColor] = useState(
@@ -270,6 +271,13 @@ export function SystemsTableFormatPanel({ element, onUpdate, onClose }: SystemsT
         <Button onClick={handleApply} className="w-full">
           Apply
         </Button>
+
+        {/* Delete Button */}
+        {onDelete && (
+          <Button onClick={onDelete} variant="destructive" className="w-full">
+            Delete Table
+          </Button>
+        )}
       </div>
     </div>
   );

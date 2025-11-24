@@ -10,6 +10,7 @@ export function ResizableElement({
   containerRef,
   children,
   showFormatButton = true,
+  showDeleteButton = true,
   minHeight = 100,
   selectionBorderInset = 0,
   ...rest
@@ -24,15 +25,42 @@ export function ResizableElement({
 
   const handleElementClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    
+
     // Don't select if clicking on buttons or interactive elements
     if (target.closest('button, input, textarea, a, [role="button"]')) {
+      return;
+    }
+
+    // Don't select if clicking inside contenteditable (user is in edit mode)
+    if (target.closest('[contenteditable="true"]')) {
       return;
     }
 
     // Don't select if clicking on resize handles
     if (target.classList.contains('resize-handle')) {
       return;
+    }
+
+    // For table elements, only select if clicking on the border (within 8px of edge)
+    if (rest['data-table-element'] !== undefined && elementRef.current) {
+      const rect = elementRef.current.getBoundingClientRect();
+      const borderThreshold = 8; // pixels from edge
+
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      const isOnLeftBorder = clickX <= borderThreshold;
+      const isOnRightBorder = clickX >= rect.width - borderThreshold;
+      const isOnTopBorder = clickY <= borderThreshold;
+      const isOnBottomBorder = clickY >= rect.height - borderThreshold;
+
+      const isOnBorder = isOnLeftBorder || isOnRightBorder || isOnTopBorder || isOnBottomBorder;
+
+      if (!isOnBorder) {
+        // Clicked inside table content, don't stop propagation
+        // This allows the click to bubble to handleContainerClick which will deselect
+        return;
+      }
     }
 
     // Select the element if not already selected
@@ -177,7 +205,7 @@ export function ResizableElement({
       style={{
         left: element.position.x,
         top: element.position.y,
-        width: element.size.width,
+        width: rest['data-table-element'] !== undefined ? 'auto' : element.size.width,
         height: rest['data-table-element'] !== undefined ? 'auto' : element.size.height,
         zIndex: element.zIndex,
         cursor: isDragging ? 'grabbing' : (isSelected ? 'move' : 'pointer')
@@ -206,8 +234,8 @@ export function ResizableElement({
         {children}
       </div>
 
-      {/* Delete Button - Only visible when selected */}
-      {isSelected && (
+      {/* Delete Button - Only visible when selected and showDeleteButton is true */}
+      {isSelected && showDeleteButton && (
         <Button
           onClick={(e) => {
             e.stopPropagation();

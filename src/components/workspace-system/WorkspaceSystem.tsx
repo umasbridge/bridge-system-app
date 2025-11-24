@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { Button } from '../ui/button';
 import { Plus, X } from 'lucide-react';
 import { WorkspaceEditor } from './WorkspaceEditor';
+import { WorkspaceNameDialog } from './WorkspaceNameDialog';
 import { workspaceOperations, Workspace as DBWorkspace } from '../../db/database';
 
 interface Workspace {
@@ -128,34 +129,37 @@ export function WorkspaceSystem() {
   const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [showWorkspaceNameDialog, setShowWorkspaceNameDialog] = useState(false);
 
   // Load workspaces from DB on initial load
   useEffect(() => {
     const loadWorkspaces = async () => {
       const dbWorkspaces = await workspaceOperations.getAll();
-      if (dbWorkspaces.length === 0) {
-        // Create default workspace if none exist
-        const defaultWorkspace = await workspaceOperations.create('Workspace 1');
-        setWorkspaces([defaultWorkspace]);
-        setActiveWorkspaceId(defaultWorkspace.id);
-      } else {
+      if (dbWorkspaces.length > 0) {
         setWorkspaces(dbWorkspaces);
         setActiveWorkspaceId(dbWorkspaces[0].id);
       }
+      // If no workspaces, user will see "Create Workspace" button
     };
     loadWorkspaces();
   }, []);
 
-  const handleCreateWorkspace = async (title?: string) => {
-    const existingWorkspace = workspaces.find(ws => ws.title === (title || 'Untitled Workspace'));
+  const handleCreateWorkspace = async (title: string) => {
+    const existingWorkspace = workspaces.find(ws => ws.title === title);
     if (existingWorkspace) {
+      setActiveWorkspaceId(existingWorkspace.id);
       return existingWorkspace.id;
     }
 
-    const newWorkspace = await workspaceOperations.create(title || 'Untitled Workspace');
+    const newWorkspace = await workspaceOperations.create(title);
     setWorkspaces([...workspaces, newWorkspace]);
     setActiveWorkspaceId(newWorkspace.id);
+    setShowWorkspaceNameDialog(false);
     return newWorkspace.id;
+  };
+
+  const handleShowWorkspaceDialog = () => {
+    setShowWorkspaceNameDialog(true);
   };
 
   const handleNavigateToWorkspace = async (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => {
@@ -250,6 +254,11 @@ export function WorkspaceSystem() {
     }
   };
 
+  const handleSaveAndClose = () => {
+    setActiveWorkspaceId(null);
+    setSplitViewWorkspaceId(null);
+  };
+
   const activeWorkspace = workspaces.find(ws => ws.id === activeWorkspaceId);
   const splitViewWorkspace = workspaces.find(ws => ws.id === splitViewWorkspaceId);
 
@@ -269,68 +278,31 @@ export function WorkspaceSystem() {
   return (
     <WorkspaceContext.Provider value={contextValue}>
       <div className="w-full h-screen flex flex-col">
-      {/* Top Navigation Bar */}
-      <div className="bg-white border-b border-gray-200 flex items-center px-4 py-2 gap-2">
-        <Button
-          onClick={() => handleCreateWorkspace()}
-          size="sm"
-          className="gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Create New Workspace
-        </Button>
-
-        {/* Workspace Tabs */}
-        {workspaces.length > 0 && (
-          <div className="flex-1 flex items-center gap-1 overflow-x-auto ml-4">
-            {workspaces.map(workspace => (
-              <div
-                key={workspace.id}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-t border-b-2 cursor-pointer transition-colors ${
-                  activeWorkspaceId === workspace.id
-                    ? 'bg-gray-50 border-blue-500'
-                    : 'bg-white border-transparent hover:bg-gray-50'
-                }`}
-                onClick={() => setActiveWorkspaceId(workspace.id)}
-              >
-                <span className="text-sm truncate max-w-[150px]">
-                  {workspace.title}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCloseWorkspace(workspace.id);
-                  }}
-                  className="hover:bg-gray-200 rounded p-0.5"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
+      {/* Top Navigation Bar - Hidden per user request */}
       {/* Workspace Content Area */}
-      <div className="flex-1 overflow-hidden relative">
+      <div className="flex-1 overflow-auto bg-gray-100 flex items-start justify-center px-8 pb-8 pt-1">
         {activeWorkspace ? (
-          <div className="absolute inset-0 flex">
-            {/* Main Workspace */}
-            <div className={splitViewWorkspaceId ? "w-1/2 h-full border-r border-gray-200" : "w-full h-full"}>
-              <WorkspaceEditor
-                key={activeWorkspace.id}
-                workspaceId={activeWorkspace.id}
-                initialTitle={activeWorkspace.title}
-                onTitleChange={(newTitle) => handleTitleChange(activeWorkspace.id, newTitle)}
-                onClose={() => handleCloseWorkspace(activeWorkspace.id)}
-                existingWorkspaces={workspaces.map(ws => ws.title)}
-                onNavigateToWorkspace={handleNavigateToWorkspace}
-              />
+          <div className={splitViewWorkspaceId ? "flex w-full max-w-[1600px]" : "w-full max-w-[800px]"}>
+            {/* Main Workspace - A4 Page Layout */}
+            <div className={splitViewWorkspaceId ? "w-1/2 pr-4" : "w-full"}>
+              <div className="bg-white border-2 border-gray-300 rounded-sm shadow-lg" style={{ height: '1123px', width: '794px' }}>
+                <WorkspaceEditor
+                  key={activeWorkspace.id}
+                  workspaceId={activeWorkspace.id}
+                  initialTitle={activeWorkspace.title}
+                  onTitleChange={(newTitle) => handleTitleChange(activeWorkspace.id, newTitle)}
+                  onClose={() => handleCloseWorkspace(activeWorkspace.id)}
+                  onSaveAndClose={handleSaveAndClose}
+                  existingWorkspaces={workspaces.map(ws => ws.title)}
+                  onNavigateToWorkspace={handleNavigateToWorkspace}
+                />
+              </div>
             </div>
 
             {/* Split View Workspace - 50/50 Layout */}
             {splitViewWorkspaceId && splitViewWorkspace && (
-              <div className="w-1/2 h-full border-l-2 border-blue-500 bg-white relative">
+              <div className="w-1/2 pl-4">
+                <div className="bg-white border-2 border-gray-300 rounded-sm shadow-lg relative" style={{ height: '1123px', width: '794px' }}>
                 {/* Close Split View Button */}
                 <button
                   onClick={() => setSplitViewWorkspaceId(null)}
@@ -346,9 +318,11 @@ export function WorkspaceSystem() {
                   initialTitle={splitViewWorkspace.title}
                   onTitleChange={(newTitle) => handleTitleChange(splitViewWorkspace.id, newTitle)}
                   onClose={() => setSplitViewWorkspaceId(null)}
+                  onSaveAndClose={handleSaveAndClose}
                   existingWorkspaces={workspaces.map(ws => ws.title)}
                   onNavigateToWorkspace={handleNavigateToWorkspace}
                 />
+                </div>
               </div>
             )}
           </div>
@@ -356,7 +330,7 @@ export function WorkspaceSystem() {
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center">
               <p className="text-gray-500 mb-4">No workspace open</p>
-              <Button onClick={() => handleCreateWorkspace()} className="gap-2">
+              <Button onClick={handleShowWorkspaceDialog} className="gap-2">
                 <Plus className="h-4 w-4" />
                 Create New Workspace
               </Button>
@@ -376,6 +350,14 @@ export function WorkspaceSystem() {
             }}
             onMouseDown={handlePopupMouseDown}
             onReadMore={handleReadMore}
+          />
+        )}
+
+        {/* Workspace Name Dialog */}
+        {showWorkspaceNameDialog && (
+          <WorkspaceNameDialog
+            onConfirm={handleCreateWorkspace}
+            onCancel={() => setShowWorkspaceNameDialog(false)}
           />
         )}
       </div>
