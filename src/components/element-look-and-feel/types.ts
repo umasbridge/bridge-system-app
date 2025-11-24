@@ -38,5 +38,6 @@ export interface ResizableElementProps {
   children: React.ReactNode;
   showFormatButton?: boolean;
   minHeight?: number; // Minimum height for manual resize
+  selectionBorderInset?: number; // Inset the selection border by this many pixels from edges
   [key: string]: any; // Allow additional props to be passed through
 }

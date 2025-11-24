@@ -11,6 +11,7 @@ export function ResizableElement({
   children,
   showFormatButton = true,
   minHeight = 100,
+  selectionBorderInset = 0,
   ...rest
 }: ResizableElementProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -177,7 +178,7 @@ export function ResizableElement({
         left: element.position.x,
         top: element.position.y,
         width: element.size.width,
-        height: element.size.height,
+        height: rest['data-table-element'] !== undefined ? 'auto' : element.size.height,
         zIndex: element.zIndex,
         cursor: isDragging ? 'grabbing' : (isSelected ? 'move' : 'pointer')
       }}
@@ -188,8 +189,12 @@ export function ResizableElement({
       {/* Blue border when selected - using box-shadow to avoid conflicts with content borders */}
       {isSelected && (
         <div
-          className="absolute inset-0 pointer-events-none"
+          className="absolute pointer-events-none"
           style={{
+            top: selectionBorderInset,
+            left: selectionBorderInset,
+            right: selectionBorderInset,
+            bottom: selectionBorderInset,
             boxShadow: 'inset 0 0 0 2px rgb(59, 130, 246)',
             zIndex: 1
           }}
@@ -210,9 +215,24 @@ export function ResizableElement({
           }}
           variant="destructive"
           size="sm"
-          className="absolute -top-10 right-0 z-50"
+          className="absolute -bottom-10 right-0 z-50"
         >
           <Trash2 className="h-4 w-4" />
+        </Button>
+      )}
+
+      {/* Format Button - Only visible when selected and showFormatButton is true */}
+      {isSelected && showFormatButton && actions.onFormat && (
+        <Button
+          onClick={(e) => {
+            e.stopPropagation();
+            actions.onFormat!();
+          }}
+          variant="secondary"
+          size="sm"
+          className="absolute -bottom-10 right-12 z-50"
+        >
+          <Settings className="h-4 w-4" />
         </Button>
       )}
 

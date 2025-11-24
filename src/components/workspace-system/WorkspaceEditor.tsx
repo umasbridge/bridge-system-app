@@ -456,14 +456,16 @@ export function WorkspaceEditor({
         {elements.map((element) => {
           if (element.type === 'systems-table') {
             const tableElement = element as SystemsTableElement;
-            
+            const isTableSelected = selectedId === element.id && focusedCellId?.tableId !== element.id;
+
             return (
               <ResizableElement
                 key={element.id}
                 element={element}
-                isSelected={selectedId === element.id}
+                isSelected={isTableSelected}
                 containerRef={containerRef}
                 showFormatButton={true}
+                minHeight={50}
                 actions={{
                   onSelect: () => setSelectedId(element.id),
                   onUpdate: (updates) => handleUpdate(element.id, updates),
@@ -474,8 +476,8 @@ export function WorkspaceEditor({
                 }}
                 data-table-element
               >
-                <div 
-                  className="block overflow-visible leading-none"
+                <div
+                  className="inline-block"
                   style={{
                     border: element.borderWidth && element.borderWidth > 0 && element.borderColor !== 'transparent'
                       ? `${element.borderWidth}px solid ${element.borderColor}`
@@ -665,8 +667,8 @@ export function WorkspaceEditor({
 
         {/* Text Format Panel - Appears on right side when text element is focused */}
         {focusedTextElementId && (
-          <div 
-            className="fixed right-4 top-1/2 -translate-y-1/2 z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-4 w-64"
+          <div
+            className="fixed right-0 top-1/2 -translate-y-1/2 z-50 bg-white rounded-l-lg shadow-lg border border-gray-200 p-4 w-64"
             data-text-format-panel
           >
             <TextFormatPanel
@@ -690,8 +692,8 @@ export function WorkspaceEditor({
 
         {/* Cell Format Panel - Appears on right side when table cell is focused */}
         {focusedCellId && (
-          <div 
-            className="fixed right-4 top-1/2 -translate-y-1/2 z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-4 w-64"
+          <div
+            className="fixed right-0 top-1/2 -translate-y-1/2 z-50 bg-white rounded-l-lg shadow-lg border border-gray-200 p-4 w-64"
             data-text-format-panel
           >
             <TextFormatPanel

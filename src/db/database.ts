@@ -29,6 +29,7 @@ export interface SystemsTableElement extends BaseElement {
     enabled: boolean;
     color: string;
     width: number;
+    style?: 'solid' | 'dashed' | 'dotted' | 'double';
   };
   levelWidths?: { [level: number]: number };
   meaningWidth?: number;

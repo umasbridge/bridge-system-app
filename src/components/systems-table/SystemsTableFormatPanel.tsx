@@ -10,6 +10,7 @@ interface GridlineOptions {
   enabled: boolean;
   color: string;
   width: number;
+  style?: 'solid' | 'dashed' | 'dotted' | 'double';
 }
 
 export interface SystemsTableElement extends BaseElement {
@@ -36,10 +37,11 @@ export function SystemsTableFormatPanel({ element, onUpdate, onClose }: SystemsT
   const [borderWidth, setBorderWidth] = useState(initialBorderWidth > 0 ? initialBorderWidth : 2);
   
   // Gridline settings
-  const initialGridlines = element.gridlines || { enabled: false, color: '#D1D5DB', width: 1 };
+  const initialGridlines = element.gridlines || { enabled: false, color: '#D1D5DB', width: 1, style: 'solid' };
   const [gridlinesEnabled, setGridlinesEnabled] = useState(initialGridlines.enabled);
   const [gridlineColor, setGridlineColor] = useState(initialGridlines.color);
   const [gridlineWidth, setGridlineWidth] = useState(initialGridlines.width);
+  const [gridlineStyle, setGridlineStyle] = useState<'solid' | 'dashed' | 'dotted' | 'double'>(initialGridlines.style || 'solid');
   
   const [customBorderColor, setCustomBorderColor] = useState(borderColor);
   const [customGridlineColor, setCustomGridlineColor] = useState(gridlineColor);
@@ -59,7 +61,8 @@ export function SystemsTableFormatPanel({ element, onUpdate, onClose }: SystemsT
       gridlines: {
         enabled: gridlinesEnabled,
         color: gridlineColor,
-        width: gridlineWidth
+        width: gridlineWidth,
+        style: gridlineStyle
       }
     });
     onClose();
@@ -238,6 +241,23 @@ export function SystemsTableFormatPanel({ element, onUpdate, onClose }: SystemsT
                       className="flex-1"
                     >
                       {width}px
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Gridline Style</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['solid', 'dashed', 'dotted', 'double'] as const).map((style) => (
+                    <Button
+                      key={style}
+                      onClick={() => setGridlineStyle(style)}
+                      variant={gridlineStyle === style ? 'default' : 'outline'}
+                      size="sm"
+                      className="capitalize"
+                    >
+                      {style}
                     </Button>
                   ))}
                 </div>

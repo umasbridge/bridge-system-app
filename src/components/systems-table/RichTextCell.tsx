@@ -55,6 +55,7 @@ export function RichTextCell({
   const imageResizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const isClickingImage = useRef(false);
   const historyController = useRef<HistoryController>(createHistoryController());
+  const commitTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Try to get workspace context, but don't fail if not available
   let workspaceContext: ReturnType<typeof useWorkspaceContext> | null = null;
@@ -143,6 +144,12 @@ export function RichTextCell({
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
 
+        // Clear pending commit timer when manually triggering undo/redo
+        if (commitTimerRef.current) {
+          clearTimeout(commitTimerRef.current);
+          commitTimerRef.current = null;
+        }
+
         if (e.shiftKey) {
           // Redo
           historyController.current.redo(contentEditableRef.current, restoreSelectionFromBookmarks);
@@ -163,6 +170,15 @@ export function RichTextCell({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [onChange]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (commitTimerRef.current) {
+        clearTimeout(commitTimerRef.current);
+      }
+    };
+  }, []);
 
   // Initialize content on mount
   useEffect(() => {
@@ -232,6 +248,17 @@ export function RichTextCell({
     const htmlContent = e.currentTarget.innerHTML;
     const textContent = e.currentTarget.textContent || '';
     onChange(textContent, htmlContent);
+
+    // Clear existing timer
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+    }
+
+    // Schedule commit after 500ms of no typing
+    commitTimerRef.current = setTimeout(() => {
+      commitMutation();
+    }, 500);
+
     setTimeout(() => {
       isInternalUpdate.current = false;
     }, 0);
@@ -361,18 +388,17 @@ export function RichTextCell({
   };
 
   const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
-    // Don't hide selection if format panel or hyperlink menu is open
-    if (showTextFormatPanel || showHyperlinkMenu) {
-      // Keep the contentEditable focused when panels are open
-      e.preventDefault();
-      return;
-    }
-
     // Don't blur if clicking on format panel or hyperlink menu
     const relatedTarget = e.relatedTarget as HTMLElement;
     if (relatedTarget?.closest('[data-text-format-panel]') ||
         relatedTarget?.closest('[data-hyperlink-menu]')) {
       return;
+    }
+
+    // Clear pending commit timer
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
     }
 
     // Commit mutation to capture typing changes for undo/redo
@@ -385,9 +411,8 @@ export function RichTextCell({
       onFocusChange(false);
     }
 
-    setTimeout(() => {
-      setHasTextSelection(false);
-    }, 200);
+    // Hide text selection when blurring
+    setHasTextSelection(false);
   };
 
   const handleTextSelect = () => {
@@ -812,9 +837,20 @@ export function RichTextCell({
       // Insert the merged fragment
       range.insertNode(mergedFragment);
 
-      commitMutation();
+      // Reselect the formatted content so user can apply more formatting
+      const selection = window.getSelection();
+      if (selection && mergedFragment.firstChild && mergedFragment.lastChild) {
+        const newRange = document.createRange();
+        newRange.setStartBefore(mergedFragment.firstChild);
+        newRange.setEndAfter(mergedFragment.lastChild);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
 
-      window.getSelection()?.removeAllRanges();
+        // Update saved selection for next format operation
+        setSavedSelection(newRange);
+      }
+
+      commitMutation();
     } catch (error) {
       console.error('Error applying format:', error);
     }

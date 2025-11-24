@@ -156,8 +156,8 @@ export function SystemsTableRow({
           className="flex-shrink-0"
           style={{
             backgroundColor: row.bidFillColor || 'white',
-            border: gridlines?.enabled 
-              ? `${gridlines.width}px solid ${gridlines.color}` 
+            borderBottom: gridlines?.enabled
+              ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
               : '1px solid #D1D5DB',
           }}
         >
@@ -257,17 +257,14 @@ export function SystemsTableRow({
             right: 'hover:bg-blue-400',
           }}
           className="pr-1 py-1.5 pl-2 relative"
-          style={{ 
+          style={{
             width: actualMeaningWidth,
             backgroundColor: 'white',
-            borderTop: gridlines?.enabled 
-              ? `${gridlines.width}px solid ${gridlines.color}` 
+            borderBottom: gridlines?.enabled
+              ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
               : '1px solid #D1D5DB',
-            borderRight: gridlines?.enabled 
-              ? `${gridlines.width}px solid ${gridlines.color}` 
-              : '1px solid #D1D5DB',
-            borderBottom: gridlines?.enabled 
-              ? `${gridlines.width}px solid ${gridlines.color}` 
+            borderLeft: gridlines?.enabled
+              ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
               : '1px solid #D1D5DB',
           }}
         >

@@ -332,7 +332,17 @@ export function SystemsTable({
       onMouseEnter={() => setIsTableHovered(true)}
       onMouseLeave={() => setIsTableHovered(false)}
     >
-      <div>
+      <div style={{
+        borderTop: gridlines?.enabled
+          ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
+          : '1px solid #D1D5DB',
+        borderRight: gridlines?.enabled
+          ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
+          : '1px solid #D1D5DB',
+        borderLeft: gridlines?.enabled
+          ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
+          : '1px solid #D1D5DB'
+      }}>
         {rows.map(row => (
           <SystemsTableRow
             key={row.id}

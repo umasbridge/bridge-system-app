@@ -43,6 +43,7 @@ export function TextElementComponent({
 }: TextElementProps) {
   const contentEditableRef = useRef<HTMLDivElement>(null);
   const historyController = useRef<HistoryController>(createHistoryController());
+  const commitTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [hasTextSelection, setHasTextSelection] = useState(false);
   const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
   const [savedSelection, setSavedSelection] = useState<Range | null>(null);
@@ -147,6 +148,12 @@ export function TextElementComponent({
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
 
+        // Clear pending commit timer when manually triggering undo/redo
+        if (commitTimerRef.current) {
+          clearTimeout(commitTimerRef.current);
+          commitTimerRef.current = null;
+        }
+
         if (e.shiftKey) {
           // Redo
           historyController.current.redo(contentEditableRef.current, restoreSelectionFromBookmarks);
@@ -170,6 +177,15 @@ export function TextElementComponent({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [onUpdate]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (commitTimerRef.current) {
+        clearTimeout(commitTimerRef.current);
+      }
+    };
+  }, []);
 
   // Notify parent when selected text changes (for side panel)
   useEffect(() => {
@@ -271,14 +287,14 @@ export function TextElementComponent({
     isInternalUpdate.current = true;
     const htmlContent = e.currentTarget.innerHTML;
     const textContent = e.currentTarget.textContent || '';
-    
+
     // Calculate the new height based on content
     const contentHeight = e.currentTarget.scrollHeight;
     const containerPadding = 3; // py-1.5 = 1.5 * 2 = 3px top + 3px bottom = 6px total, but we use 3 for each side
     const borderHeight = (element.borderWidth || 1) * 2; // border on top and bottom
     const newHeight = contentHeight + (containerPadding * 2) + borderHeight;
-    
-    onUpdate({ 
+
+    onUpdate({
       content: textContent,
       htmlContent: htmlContent,
       size: {
@@ -286,6 +302,17 @@ export function TextElementComponent({
         height: Math.max(minResizeHeight, newHeight) // Minimum height of 34px
       }
     });
+
+    // Clear existing timer
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+    }
+
+    // Schedule commit after 500ms of no typing
+    commitTimerRef.current = setTimeout(() => {
+      commitMutation();
+    }, 500);
+
     setTimeout(() => {
       isInternalUpdate.current = false;
     }, 0);
@@ -643,6 +670,12 @@ export function TextElementComponent({
       return;
     }
 
+    // Clear pending commit timer
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+
     // Commit mutation to capture typing changes for undo/redo
     commitMutation();
 
@@ -651,12 +684,8 @@ export function TextElementComponent({
       onFocusChange(false);
     }
 
-    // Don't hide selection if format panel or hyperlink menu is open
-    if (!showTextFormatPanel && !showHyperlinkMenu) {
-      setTimeout(() => {
-        setHasTextSelection(false);
-      }, 200);
-    }
+    // Hide text selection when blurring
+    setHasTextSelection(false);
     setIsEditMode(false);
   };
 
@@ -976,11 +1005,21 @@ export function TextElementComponent({
       // Insert the merged fragment
       range.insertNode(mergedFragment);
 
+      // Reselect the formatted content so user can apply more formatting
+      const selection = window.getSelection();
+      if (selection && mergedFragment.firstChild && mergedFragment.lastChild) {
+        const newRange = document.createRange();
+        newRange.setStartBefore(mergedFragment.firstChild);
+        newRange.setEndAfter(mergedFragment.lastChild);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+
+        // Update saved selection for next format operation
+        setSavedSelection(newRange);
+      }
+
       // Commit the mutation (normalize + history)
       commitMutation();
-
-      // Clear selection
-      window.getSelection()?.removeAllRanges();
     } catch (error) {
       console.error('Error applying format:', error);
     }
