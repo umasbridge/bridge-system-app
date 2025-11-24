@@ -113,6 +113,12 @@ Interactive workspace web app for bridge partnerships to collaboratively build a
    - All state lost on refresh
    - MVP blocker
 
+5. **Editor Stability Implementation** - NOT STARTED
+   - Status: Phase 1 of 8 - Ready to implement DOM normalization engine
+   - Last Updated: 2025-11-24
+   - Next: Implement `src/utils/rte/normalizeNodeTree.ts` (flatten nested spans, merge adjacent identical spans, canonicalize styles)
+   - Location: See EDITOR_STABILITY_PLAN.md for full 8-phase implementation plan
+
 ## File Structure
 ```
 src/
