@@ -121,10 +121,18 @@ export function SystemsTableRow({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        {/* Indent Space */}
+        {/* Indent Space - no left border to create visual break */}
         {indentWidth > 0 && (
           <div
-            style={{ width: `${indentWidth}px` }}
+            style={{
+              width: `${indentWidth}px`,
+              borderBottom: gridlines?.enabled
+                ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
+                : '1px solid #D1D5DB',
+              borderRight: gridlines?.enabled
+                ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
+                : '1px solid #D1D5DB'
+            }}
             className="flex-shrink-0"
           />
         )}
@@ -159,6 +167,9 @@ export function SystemsTableRow({
             borderBottom: gridlines?.enabled
               ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
               : '1px solid #D1D5DB',
+            borderLeft: level > 0 ? (gridlines?.enabled
+              ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
+              : '1px solid #D1D5DB') : 'none',
           }}
         >
           <div className="pl-1.5 pr-1 py-1.5 flex items-center relative" data-column-type="bid">
