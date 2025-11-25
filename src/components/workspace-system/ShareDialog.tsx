@@ -76,6 +76,14 @@ export function ShareDialog({ workspaceName, workspaceId, onClose }: ShareDialog
     }
   };
 
+  const handleDone = async () => {
+    // If there's text in the input field, add it first
+    if (name.trim()) {
+      await handleAddPartner();
+    }
+    onClose();
+  };
+
   const handleBackdropClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -185,7 +193,7 @@ export function ShareDialog({ workspaceName, workspaceId, onClose }: ShareDialog
           <div className="flex gap-4 justify-end">
             <Button
               type="button"
-              onClick={onClose}
+              onClick={handleDone}
               style={{ height: '48px', paddingLeft: '40px', paddingRight: '40px' }}
               className="text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white"
             >
