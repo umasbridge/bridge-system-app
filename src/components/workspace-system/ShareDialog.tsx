@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { X, UserPlus, Mail } from 'lucide-react';
+import { X, Plus, Trash2, Edit2 } from 'lucide-react';
 
 interface ShareDialogProps {
   workspaceName: string;
@@ -11,51 +11,40 @@ interface ShareDialogProps {
 
 interface Partner {
   id: string;
-  email: string;
-  status: 'pending' | 'accepted';
+  name: string;
+  mode: 'viewer' | 'editor';
 }
 
 export function ShareDialog({ workspaceName, onClose }: ShareDialogProps) {
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [partners, setPartners] = useState<Partner[]>([]);
-  const [error, setError] = useState('');
-
-  const validateEmail = (email: string) => {
-    return email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
-  };
 
   const handleAddPartner = () => {
-    setError('');
-
-    if (!email.trim()) {
-      setError('Please enter an email address');
+    if (!name.trim()) {
       return;
     }
 
-    if (!validateEmail(email)) {
-      setError('Please enter a valid email address');
-      return;
-    }
-
-    // Check if partner already exists
-    if (partners.some(p => p.email === email)) {
-      setError('This partner has already been added');
-      return;
-    }
-
-    // Add partner
+    // Add partner (default to viewer mode)
     const newPartner: Partner = {
       id: Math.random().toString(36).substring(7),
-      email,
-      status: 'pending'
+      name: name.trim(),
+      mode: 'viewer'
     };
 
     setPartners([...partners, newPartner]);
-    setEmail('');
+    setName('');
   };
 
   const handleRemovePartner = (id: string) => {
     setPartners(partners.filter(p => p.id !== id));
+  };
+
+  const handleToggleMode = (id: string) => {
+    setPartners(partners.map(p =>
+      p.id === id
+        ? { ...p, mode: p.mode === 'viewer' ? 'editor' : 'viewer' }
+        : p
+    ));
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -65,62 +54,42 @@ export function ShareDialog({ workspaceName, onClose }: ShareDialogProps) {
     }
   };
 
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">Share Workspace</h2>
-            <p className="text-sm text-gray-500 mt-1">{workspaceName}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
+    <div
+      className="absolute inset-0 flex items-center justify-center z-[100] pointer-events-auto"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+      onClick={handleBackdropClick}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div
+        className="bg-white rounded-lg shadow-2xl w-[580px] max-h-[80vh] overflow-y-auto"
+        style={{ position: 'relative' }}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* Line 1: Title */}
+        <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingTop: '48px', paddingBottom: '40px' }}>
+          <h2 style={{ fontSize: '30px', fontWeight: '800', textAlign: 'center', color: '#111827' }}>
+            Share System {workspaceName}
+          </h2>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Add Partner Section */}
+        <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingBottom: '40px' }}>
+          {/* Shared with section */}
           <div className="space-y-3">
-            <Label className="text-sm font-medium text-gray-700">
-              Add partners who can view this workspace
+            <Label className="text-base font-semibold text-gray-800">
+              Shared with
             </Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  type="email"
-                  placeholder="partner@example.com"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setError('');
-                  }}
-                  onKeyPress={handleKeyPress}
-                  className="pl-10"
-                />
-              </div>
-              <Button onClick={handleAddPartner} className="gap-2 flex-shrink-0">
-                <UserPlus className="h-4 w-4" />
-                Add
-              </Button>
-            </div>
-            {error && (
-              <p className="text-sm text-red-600">{error}</p>
-            )}
-          </div>
 
-          {/* Partners List */}
-          {partners.length > 0 && (
-            <div className="space-y-3">
-              <Label className="text-sm font-medium text-gray-700">
-                Shared with ({partners.length})
-              </Label>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
+            {/* Partners List */}
+            {partners.length > 0 && (
+              <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
                 {partners.map((partner) => (
                   <div
                     key={partner.id}
@@ -129,48 +98,70 @@ export function ShareDialog({ workspaceName, onClose }: ShareDialogProps) {
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                         <span className="text-sm font-medium text-blue-600">
-                          {partner.email.charAt(0).toUpperCase()}
+                          {partner.name.charAt(0).toUpperCase()}
                         </span>
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{partner.email}</p>
+                        <p className="text-sm font-medium text-gray-900">{partner.name}</p>
                         <p className="text-xs text-gray-500">
-                          {partner.status === 'pending' ? 'Invitation pending' : 'Active'}
+                          {partner.mode === 'viewer' ? 'Viewer' : 'Editor'}
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleRemovePartner(partner.id)}
-                      className="text-gray-400 hover:text-red-600 transition-colors"
-                      title="Remove partner"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleToggleMode(partner.id)}
+                        className="text-gray-400 hover:text-blue-600 transition-colors p-1"
+                        title={`Change to ${partner.mode === 'viewer' ? 'editor' : 'viewer'}`}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleRemovePartner(partner.id)}
+                        className="text-gray-400 hover:text-red-600 transition-colors p-1"
+                        title="Remove partner"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {partners.length === 0 && (
-            <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 rounded-full mb-3">
-                <UserPlus className="h-6 w-6 text-gray-400" />
-              </div>
-              <p className="text-sm text-gray-500">No partners added yet</p>
-              <p className="text-xs text-gray-400 mt-1">Add partners to share this workspace</p>
+            {/* Add Partner Input */}
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                placeholder="Enter partner name..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyPress={handleKeyPress}
+                className="flex-1 h-12 px-4 text-base border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+              />
+              <Button
+                onClick={handleAddPartner}
+                className="h-12 w-12 p-0 flex-shrink-0"
+                disabled={!name.trim()}
+              >
+                <Plus className="h-5 w-5" />
+              </Button>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
-          <Button onClick={onClose} variant="outline">
-            Cancel
-          </Button>
-          <Button onClick={onClose} variant="default">
-            Done
-          </Button>
+        <div className="bg-gray-50 border-t border-gray-200 rounded-b-lg" style={{ paddingLeft: '48px', paddingRight: '48px', paddingTop: '32px', paddingBottom: '32px' }}>
+          <div className="flex gap-4 justify-end">
+            <Button
+              type="button"
+              onClick={onClose}
+              style={{ height: '48px', paddingLeft: '40px', paddingRight: '40px' }}
+              className="text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Done
+            </Button>
+          </div>
         </div>
       </div>
     </div>
