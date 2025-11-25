@@ -1387,6 +1387,7 @@ export function WorkspaceEditor({
       {showShareDialog && (
         <ShareDialog
           workspaceName={title}
+          workspaceId={workspaceId}
           onClose={() => setShowShareDialog(false)}
         />
       )}

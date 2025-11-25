@@ -1,5 +1,12 @@
 import Dexie, { Table } from 'dexie';
 
+// Partner interface for workspace sharing
+export interface Partner {
+  id: string;
+  name: string;
+  mode: 'viewer' | 'editor';
+}
+
 // Workspace interface
 export interface Workspace {
   id: string;
@@ -11,6 +18,7 @@ export interface Workspace {
   backgroundColor?: string;
   canvasWidth?: number;
   canvasHeight?: number;
+  partners?: Partner[];
 }
 
 // Element interfaces matching WorkspaceEditor types

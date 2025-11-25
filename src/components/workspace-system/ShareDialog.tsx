@@ -1,50 +1,72 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { X, Plus, Trash2, Edit2 } from 'lucide-react';
+import { workspaceOperations, Partner } from '../../db/database';
 
 interface ShareDialogProps {
   workspaceName: string;
+  workspaceId: string;
   onClose: () => void;
 }
 
-interface Partner {
-  id: string;
-  name: string;
-  mode: 'viewer' | 'editor';
-}
-
-export function ShareDialog({ workspaceName, onClose }: ShareDialogProps) {
+export function ShareDialog({ workspaceName, workspaceId, onClose }: ShareDialogProps) {
   const [name, setName] = useState('');
+  const [selectedMode, setSelectedMode] = useState<'viewer' | 'editor'>('viewer');
   const [partners, setPartners] = useState<Partner[]>([]);
 
-  const handleAddPartner = () => {
+  // Load partners from database when dialog opens
+  useEffect(() => {
+    const loadPartners = async () => {
+      const workspace = await workspaceOperations.getById(workspaceId);
+      if (workspace?.partners) {
+        setPartners(workspace.partners);
+      }
+    };
+    loadPartners();
+  }, [workspaceId]);
+
+  const handleAddPartner = async () => {
     if (!name.trim()) {
       return;
     }
 
-    // Add partner (default to viewer mode)
+    // Add partner with selected mode
     const newPartner: Partner = {
       id: Math.random().toString(36).substring(7),
       name: name.trim(),
-      mode: 'viewer'
+      mode: selectedMode
     };
 
-    setPartners([...partners, newPartner]);
+    const updatedPartners = [...partners, newPartner];
+    setPartners(updatedPartners);
+
+    // Save to database
+    await workspaceOperations.update(workspaceId, { partners: updatedPartners });
+
     setName('');
+    setSelectedMode('viewer'); // Reset to viewer
   };
 
-  const handleRemovePartner = (id: string) => {
-    setPartners(partners.filter(p => p.id !== id));
+  const handleRemovePartner = async (id: string) => {
+    const updatedPartners = partners.filter(p => p.id !== id);
+    setPartners(updatedPartners);
+
+    // Save to database
+    await workspaceOperations.update(workspaceId, { partners: updatedPartners });
   };
 
-  const handleToggleMode = (id: string) => {
-    setPartners(partners.map(p =>
+  const handleToggleMode = async (id: string) => {
+    const updatedPartners = partners.map(p =>
       p.id === id
         ? { ...p, mode: p.mode === 'viewer' ? 'editor' : 'viewer' }
         : p
-    ));
+    );
+    setPartners(updatedPartners);
+
+    // Save to database
+    await workspaceOperations.update(workspaceId, { partners: updatedPartners });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -75,7 +97,7 @@ export function ShareDialog({ workspaceName, onClose }: ShareDialogProps) {
         {/* Line 1: Title */}
         <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingTop: '48px', paddingBottom: '40px' }}>
           <h2 style={{ fontSize: '30px', fontWeight: '800', textAlign: 'center', color: '#111827' }}>
-            Share System {workspaceName}
+            Share System: {workspaceName}
           </h2>
         </div>
 
@@ -139,6 +161,14 @@ export function ShareDialog({ workspaceName, onClose }: ShareDialogProps) {
                 onKeyPress={handleKeyPress}
                 className="flex-1 h-12 px-4 text-base border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
               />
+              <select
+                value={selectedMode}
+                onChange={(e) => setSelectedMode(e.target.value as 'viewer' | 'editor')}
+                className="h-12 px-4 text-base border-2 border-gray-300 rounded-md bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              >
+                <option value="viewer">Viewer</option>
+                <option value="editor">Editor</option>
+              </select>
               <Button
                 onClick={handleAddPartner}
                 className="h-12 w-12 p-0 flex-shrink-0"
