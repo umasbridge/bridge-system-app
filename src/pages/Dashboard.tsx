@@ -65,7 +65,7 @@ export function Dashboard() {
   };
 
   const handleCreateNew = async () => {
-    const newWorkspace = await workspaceOperations.create('Untitled Workspace');
+    const newWorkspace = await workspaceOperations.create('');
     navigate(`/workspace/${newWorkspace.id}`);
   };
 

@@ -68,7 +68,10 @@ export function WorkspaceFormatPanel({ workspace, onUpdate, onClose, onDelete }:
   };
 
   return (
-    <div className="fixed top-4 right-4 w-80 bg-white border border-gray-300 rounded-lg shadow-lg z-50 max-h-[90vh] flex flex-col">
+    <div
+      className="fixed top-4 right-4 w-80 bg-white border border-gray-300 rounded-lg shadow-lg z-50 max-h-[90vh] flex flex-col"
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         <h3 className="font-semibold">Format Workspace</h3>
         <Button

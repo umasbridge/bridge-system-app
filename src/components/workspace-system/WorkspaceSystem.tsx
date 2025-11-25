@@ -159,7 +159,8 @@ export function WorkspaceSystem() {
   };
 
   const handleShowWorkspaceDialog = () => {
-    setShowWorkspaceNameDialog(true);
+    // Directly create a workspace with empty name - user must enter name in title bar
+    handleCreateWorkspace('');
   };
 
   const handleNavigateToWorkspace = async (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => {

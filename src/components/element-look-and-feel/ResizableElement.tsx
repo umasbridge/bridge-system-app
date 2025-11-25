@@ -41,8 +41,8 @@ export function ResizableElement({
       return;
     }
 
-    // For table elements, only select if clicking on the border (within 8px of edge)
-    if (rest['data-table-element'] !== undefined && elementRef.current) {
+    // For table and PDF elements, only select if clicking on the border (within 8px of edge)
+    if ((rest['data-table-element'] !== undefined || rest['data-pdf-element'] !== undefined) && elementRef.current) {
       const rect = elementRef.current.getBoundingClientRect();
       const borderThreshold = 8; // pixels from edge
 
@@ -57,17 +57,15 @@ export function ResizableElement({
       const isOnBorder = isOnLeftBorder || isOnRightBorder || isOnTopBorder || isOnBottomBorder;
 
       if (!isOnBorder) {
-        // Clicked inside table content, don't stop propagation
+        // Clicked inside content, don't stop propagation
         // This allows the click to bubble to handleContainerClick which will deselect
         return;
       }
     }
 
-    // Select the element if not already selected
-    if (!isSelected) {
-      e.stopPropagation();
-      actions.onSelect();
-    }
+    // Select the element (call onSelect even if already selected to support toggle behavior)
+    e.stopPropagation();
+    actions.onSelect();
   };
 
   const handleDragStart = (e: React.MouseEvent) => {

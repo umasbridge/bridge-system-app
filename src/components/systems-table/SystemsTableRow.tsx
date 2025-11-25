@@ -103,8 +103,7 @@ export function SystemsTableRow({
   const handleResizeStop = (_e: any, _direction: any, _ref: any, d: any) => {
     const newWidth = bidColumnWidth + d.width;
     onUpdateLevelWidth(level, newWidth);
-    // Also update table width to maintain alignment
-    onUpdateMeaningWidth(meaningWidth + d.width);
+    // Don't update meaningWidth - it should stay constant so the meaning column shrinks/grows inversely
   };
 
   const handleColorSelect = (color: string | undefined) => {

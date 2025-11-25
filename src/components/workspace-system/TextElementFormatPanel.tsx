@@ -9,6 +9,7 @@ import { TextElement } from './TextElement';
 interface TextElementFormatPanelProps {
   element: TextElement;
   onUpdate: (updates: Partial<TextElement>) => void;
+  onClose: () => void;
   onDelete?: () => void;
 }
 
@@ -17,7 +18,7 @@ const PRESET_COLORS = [
   '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#FFFFFF'
 ];
 
-export function TextElementFormatPanel({ element, onUpdate, onDelete }: TextElementFormatPanelProps) {
+export function TextElementFormatPanel({ element, onUpdate, onClose, onDelete }: TextElementFormatPanelProps) {
   const initialBorderWidth = element.borderWidth ?? 0;
   const [borderEnabled, setBorderEnabled] = useState(initialBorderWidth > 0);
   const [borderColor, setBorderColor] = useState(
@@ -43,6 +44,7 @@ export function TextElementFormatPanel({ element, onUpdate, onDelete }: TextElem
       borderWidth: borderEnabled ? (borderWidth || 2) : 0,
       fillColor: fillEnabled ? fillColor : 'transparent'
     });
+    onClose();
   };
 
   const handleBorderColorChange = (color: string) => {
@@ -60,11 +62,14 @@ export function TextElementFormatPanel({ element, onUpdate, onDelete }: TextElem
   };
 
   return (
-    <div className="fixed top-4 right-4 w-80 bg-white border border-gray-300 rounded-lg shadow-lg z-50 max-h-[90vh] flex flex-col">
+    <div
+      className="fixed top-4 right-4 w-80 bg-white border border-gray-300 rounded-lg shadow-lg z-50 max-h-[90vh] flex flex-col"
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         <h3 className="font-semibold">Format Text Element</h3>
         <Button
-          onClick={handleApply}
+          onClick={onClose}
           variant="ghost"
           size="sm"
           className="h-6 w-6 p-0"

@@ -75,7 +75,7 @@ const ELEMENT_SPACING = 20; // 20px spacing between elements (1 line spacing)
 
 export function WorkspaceEditor({
   workspaceId,
-  initialTitle = 'Untitled Workspace',
+  initialTitle = '',
   onTitleChange,
   onClose,
   onSaveAndClose,
@@ -124,49 +124,8 @@ export function WorkspaceEditor({
       const dbElements = await elementOperations.getByWorkspaceId(workspaceId);
 
       if (dbElements.length === 0 && initialElements.length === 0) {
-        // Create default text element with workspace name (bold and centered)
-        const workspaceName = initialTitle || 'Title';
-        const defaultElement: TextElement & { workspaceId: string } = {
-          id: 'title-' + Math.random().toString(36).substring(7),
-          workspaceId,
-          type: 'text',
-          position: { x: 20, y: 20 },
-          size: { width: 680, height: 34 },
-          zIndex: 0,
-          content: workspaceName,
-          htmlContent: `<div style="text-align: center;"><span style="font-weight: bold;">${workspaceName}</span></div>`,
-          borderColor: 'transparent',
-          borderWidth: 0
-        };
-        await elementOperations.create(defaultElement);
-        setElements([defaultElement]);
-
-        // Auto-focus the default title element's contentEditable after a short delay
-        setTimeout(() => {
-          const textElements = document.querySelectorAll('[data-text-element-id]');
-          textElements.forEach(el => {
-            const elementId = el.getAttribute('data-text-element-id');
-            if (elementId === defaultElement.id) {
-              const contentEditable = el.querySelector('[contenteditable="true"]');
-              if (contentEditable instanceof HTMLElement) {
-                contentEditable.focus();
-                // Move cursor to end
-                const range = document.createRange();
-                const selection = window.getSelection();
-                if (contentEditable.childNodes.length > 0) {
-                  const lastNode = contentEditable.childNodes[contentEditable.childNodes.length - 1];
-                  range.selectNodeContents(lastNode);
-                  range.collapse(false);
-                } else {
-                  range.selectNodeContents(contentEditable);
-                  range.collapse(false);
-                }
-                selection?.removeAllRanges();
-                selection?.addRange(range);
-              }
-            }
-          });
-        }, 200);
+        // Start with a blank workspace - no default elements
+        setElements([]);
       } else if (dbElements.length > 0) {
         // Step 1: Recalculate heights for systems-table elements
         const elementsWithCorrectHeights = dbElements.map(el => {
@@ -261,7 +220,11 @@ export function WorkspaceEditor({
 
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle);
-    onTitleChange?.(newTitle);
+
+    // Simply update title, no validation errors shown
+    if (newTitle.trim()) {
+      onTitleChange?.(newTitle);
+    }
   };
 
   const handleWorkspaceUpdate = async (updates: Partial<Workspace>) => {
@@ -614,7 +577,11 @@ export function WorkspaceEditor({
   };
 
   const handleUpdate = async (id: string, updates: Partial<BaseElement>) => {
-    setElements(elements.map((el, index) => {
+    // Check if height is changing
+    const currentElement = elements.find(el => el.id === id);
+    const heightChanged = updates.size && currentElement && updates.size.height !== currentElement.size.height;
+
+    const updatedElements = elements.map((el, index) => {
       if (el.id === id) {
         const updated = { ...el, ...updates };
 
@@ -635,7 +602,32 @@ export function WorkspaceEditor({
         return updated;
       }
       return el;
-    }));
+    });
+
+    // If height changed and element is not manually positioned, recalculate all auto-layout positions
+    if (heightChanged && currentElement && currentElement.isManuallyPositioned !== true) {
+      const sortedByZIndex = [...updatedElements].sort((a, b) => a.zIndex - b.zIndex);
+      let cumulativeY = 20;
+      const repositionedElements = sortedByZIndex.map(el => {
+        if (el.isManuallyPositioned === true) {
+          return el;
+        }
+
+        const newPosition = { x: 20, y: cumulativeY };
+        cumulativeY += el.size.height + ELEMENT_SPACING;
+
+        // Update position in DB if it changed
+        if (el.position.y !== newPosition.y || el.position.x !== newPosition.x) {
+          elementOperations.update(el.id, { position: newPosition });
+        }
+
+        return { ...el, position: newPosition };
+      });
+
+      setElements(repositionedElements);
+    } else {
+      setElements(updatedElements);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -713,11 +705,39 @@ export function WorkspaceEditor({
   };
 
   const handleContentSizeChange = (elementId: string, width: number, height: number) => {
-    setElements(elements => elements.map(el => 
-      el.id === elementId 
-        ? { ...el, size: { width, height } } 
+    const currentElement = elements.find(el => el.id === elementId);
+    const heightChanged = currentElement && currentElement.size.height !== height;
+
+    const updatedElements = elements.map(el =>
+      el.id === elementId
+        ? { ...el, size: { width, height } }
         : el
-    ));
+    );
+
+    // If height changed and element is not manually positioned, recalculate all auto-layout positions
+    if (heightChanged && currentElement && currentElement.isManuallyPositioned !== true) {
+      const sortedByZIndex = [...updatedElements].sort((a, b) => a.zIndex - b.zIndex);
+      let cumulativeY = 20;
+      const repositionedElements = sortedByZIndex.map(el => {
+        if (el.isManuallyPositioned === true) {
+          return el;
+        }
+
+        const newPosition = { x: 20, y: cumulativeY };
+        cumulativeY += el.size.height + ELEMENT_SPACING;
+
+        // Update position in DB if it changed
+        if (el.position.y !== newPosition.y || el.position.x !== newPosition.x) {
+          elementOperations.update(el.id, { position: newPosition });
+        }
+
+        return { ...el, position: newPosition };
+      });
+
+      setElements(repositionedElements);
+    } else {
+      setElements(updatedElements);
+    }
   };
 
   const handleContainerClick = (e: React.MouseEvent) => {
@@ -815,6 +835,20 @@ export function WorkspaceEditor({
 
   return (
     <div className="w-full h-full flex flex-col relative">
+      {/* Title Bar */}
+      {!hideControls && (
+        <div className="bg-white border-b border-gray-200 px-8 py-3 flex-shrink-0">
+          <Input
+            type="text"
+            value={title}
+            onChange={(e) => handleTitleChange(e.target.value)}
+            className="text-lg font-semibold"
+            placeholder="Enter workspace name..."
+            autoFocus
+          />
+        </div>
+      )}
+
       {/* Loading State */}
       {isLoading && (
         <div className="flex-1 flex items-center justify-center">
@@ -876,9 +910,12 @@ export function WorkspaceEditor({
                 setFocusedTextElementId(null);
                 setFocusedCellId(null);
               } else {
-                // Clicked inside canvas (not on border), deselect workspace
+                // Clicked inside canvas (not on border), deselect everything
                 setWorkspaceSelected(false);
                 setFormatPanelId(null);
+                setSelectedId(null);
+                setFocusedTextElementId(null);
+                setFocusedCellId(null);
               }
             }
           }}
@@ -899,17 +936,23 @@ export function WorkspaceEditor({
                 minHeight={50}
                 actions={{
                   onSelect: () => {
-                    // Explicitly blur all contentEditable elements to remove cursor
-                    const contentEditables = document.querySelectorAll('[contenteditable="true"]');
-                    contentEditables.forEach(el => {
-                      if (el instanceof HTMLElement) {
-                        el.blur();
-                      }
-                    });
-                    setSelectedId(element.id);
-                    setFocusedCellId(null); // Clear cell edit mode when selecting table
-                    setFormatPanelId(element.id); // Show format panel when selected
-                    setWorkspaceSelected(false); // Deselect workspace
+                    if (selectedId === element.id && formatPanelId === element.id) {
+                      // If already selected with panel open, clicking again should deselect
+                      setSelectedId(null);
+                      setFormatPanelId(null);
+                    } else {
+                      // Explicitly blur all contentEditable elements to remove cursor
+                      const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+                      contentEditables.forEach(el => {
+                        if (el instanceof HTMLElement) {
+                          el.blur();
+                        }
+                      });
+                      setSelectedId(element.id);
+                      setFocusedCellId(null); // Clear cell edit mode when selecting table
+                      setFormatPanelId(element.id); // Show format panel when selected
+                      setWorkspaceSelected(false); // Deselect workspace
+                    }
                   },
                   onUpdate: (updates) => handleUpdate(element.id, updates),
                   onDelete: () => handleDelete(element.id),
@@ -1083,6 +1126,7 @@ export function WorkspaceEditor({
                 element={pdfElement}
                 isSelected={selectedId === element.id}
                 containerRef={containerRef}
+                data-pdf-element
                 onSelect={() => {
                   if (selectedId === element.id && formatPanelId === element.id) {
                     // If already selected with panel open, clicking again should deselect
@@ -1181,11 +1225,15 @@ export function WorkspaceEditor({
           <SystemsTableFormatPanel
             element={selectedElement as SystemsTableElement}
             onUpdate={(updates) => handleUpdate(formatPanelId, updates)}
-            onClose={() => setFormatPanelId(null)}
+            onClose={() => {
+              setFormatPanelId(null);
+              setSelectedId(null);
+            }}
             onDelete={() => {
               if (formatPanelId) {
                 handleDelete(formatPanelId);
                 setFormatPanelId(null);
+                setSelectedId(null);
               }
             }}
           />
@@ -1196,11 +1244,15 @@ export function WorkspaceEditor({
           <PdfElementFormatPanel
             element={selectedElement as PdfElement}
             onUpdate={(updates) => handleUpdate(formatPanelId, updates)}
-            onClose={() => setFormatPanelId(null)}
+            onClose={() => {
+              setFormatPanelId(null);
+              setSelectedId(null);
+            }}
             onDelete={() => {
               if (formatPanelId) {
                 handleDelete(formatPanelId);
                 setFormatPanelId(null);
+                setSelectedId(null);
               }
             }}
           />
@@ -1286,7 +1338,7 @@ export function WorkspaceEditor({
       {!hideControls && (
         <div className="bg-white border-t border-gray-200 px-8 py-4 flex-shrink-0 sticky bottom-0">
           <div className="flex gap-2 justify-between items-center">
-            <div className="flex gap-2">
+            <div className="flex gap-4">
               <Button onClick={handleInsertSystemsTable} variant="outline">
                 Insert Systems Table
               </Button>
@@ -1294,14 +1346,11 @@ export function WorkspaceEditor({
                 Insert Text
               </Button>
               <Button onClick={handleUploadFile} variant="outline">
-                Upload File
-              </Button>
-              <Button onClick={handleInsertImage} variant="outline">
-                Insert Image
+                Upload PDF
               </Button>
             </div>
             {onSaveAndClose && (
-              <Button onClick={onSaveAndClose} variant="default">
+              <Button onClick={onSaveAndClose} variant="default" disabled={!title.trim()}>
                 Save and Close
               </Button>
             )}

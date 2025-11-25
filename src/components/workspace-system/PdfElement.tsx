@@ -20,6 +20,7 @@ interface PdfElementProps {
   onDelete: () => void;
   onInteractionStart?: () => void;
   onInteractionEnd?: () => void;
+  [key: string]: any; // Allow data attributes
 }
 
 export function PdfElementComponent({
@@ -30,7 +31,8 @@ export function PdfElementComponent({
   onUpdate,
   onDelete,
   onInteractionStart,
-  onInteractionEnd
+  onInteractionEnd,
+  ...rest
 }: PdfElementProps) {
   const handlePrevious = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -62,14 +64,15 @@ export function PdfElementComponent({
       }}
       showFormatButton={true}
       showDeleteButton={false}
+      {...rest}
     >
       <div className="w-full h-full flex flex-col relative">
         {/* PDF Page Display */}
         <div
-          className="w-full h-full flex items-center justify-center"
+          className="w-full h-full"
           style={{
             backgroundColor: element.backgroundColor || 'white',
-            border: element.borderWidth && element.borderWidth > 0
+            border: (element.borderWidth && element.borderWidth > 0 && element.borderColor && element.borderColor !== 'transparent')
               ? `${element.borderWidth}px solid ${element.borderColor}`
               : 'none'
           }}
@@ -78,8 +81,8 @@ export function PdfElementComponent({
             <img
               src={currentPageImage}
               alt={`Page ${element.currentPage} of ${element.totalPages}`}
-              className="max-w-full max-h-full object-contain"
-              style={{ pointerEvents: 'none' }}
+              className="w-full h-full"
+              style={{ pointerEvents: 'none', objectFit: 'fill' }}
             />
           )}
         </div>
