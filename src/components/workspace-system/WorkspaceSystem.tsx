@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { Plus, X } from 'lucide-react';
 import { WorkspaceEditor } from './WorkspaceEditor';
@@ -122,6 +123,10 @@ function CommentBox({ workspaceName, position, workspace, onClose, onMouseDown, 
 }
 
 export function WorkspaceSystem() {
+  const { id: workspaceIdFromUrl } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [splitViewWorkspaceId, setSplitViewWorkspaceId] = useState<string | null>(null);
@@ -130,19 +135,29 @@ export function WorkspaceSystem() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [showWorkspaceNameDialog, setShowWorkspaceNameDialog] = useState(false);
+  const [isViewMode, setIsViewMode] = useState(false);
 
-  // Load workspaces from DB on initial load
+  // Load workspaces from DB and handle URL-based workspace loading
   useEffect(() => {
     const loadWorkspaces = async () => {
       const dbWorkspaces = await workspaceOperations.getAll();
-      if (dbWorkspaces.length > 0) {
-        setWorkspaces(dbWorkspaces);
+      setWorkspaces(dbWorkspaces);
+
+      // Check if there's a workspace ID in the URL
+      if (workspaceIdFromUrl) {
+        setActiveWorkspaceId(workspaceIdFromUrl);
+
+        // Check if mode is specified in query params
+        const mode = searchParams.get('mode');
+        setIsViewMode(mode === 'view');
+      } else if (dbWorkspaces.length > 0) {
+        // Fallback to first workspace if no URL param
         setActiveWorkspaceId(dbWorkspaces[0].id);
       }
       // If no workspaces, user will see "Create Workspace" button
     };
     loadWorkspaces();
-  }, []);
+  }, [workspaceIdFromUrl, searchParams]);
 
   const handleCreateWorkspace = async (title: string) => {
     const existingWorkspace = workspaces.find(ws => ws.title === title);
@@ -256,8 +271,15 @@ export function WorkspaceSystem() {
   };
 
   const handleSaveAndClose = () => {
-    setActiveWorkspaceId(null);
-    setSplitViewWorkspaceId(null);
+    // Navigate back to dashboard
+    navigate('/dashboard');
+  };
+
+  const handleSwitchToEditMode = () => {
+    setIsViewMode(false);
+    // Update URL to reflect edit mode
+    searchParams.set('mode', 'edit');
+    setSearchParams(searchParams);
   };
 
   const activeWorkspace = workspaces.find(ws => ws.id === activeWorkspaceId);
@@ -296,6 +318,8 @@ export function WorkspaceSystem() {
                   onSaveAndClose={handleSaveAndClose}
                   existingWorkspaces={workspaces.map(ws => ws.title)}
                   onNavigateToWorkspace={handleNavigateToWorkspace}
+                  isViewMode={isViewMode}
+                  onSwitchToEditMode={handleSwitchToEditMode}
                 />
               </div>
             </div>
@@ -322,6 +346,8 @@ export function WorkspaceSystem() {
                   onSaveAndClose={handleSaveAndClose}
                   existingWorkspaces={workspaces.map(ws => ws.title)}
                   onNavigateToWorkspace={handleNavigateToWorkspace}
+                  isViewMode={isViewMode}
+                  onSwitchToEditMode={handleSwitchToEditMode}
                 />
                 </div>
               </div>
