@@ -12,6 +12,7 @@ import { PdfElementComponent } from './PdfElement';
 import { PdfElementFormatPanel } from './PdfElementFormatPanel';
 import { WorkspaceFormatPanel } from './WorkspaceFormatPanel';
 import { ElementNameDialog } from './ElementNameDialog';
+import { ShareDialog } from './ShareDialog';
 import * as pdfjsLib from 'pdfjs-dist';
 import { elementOperations, WorkspaceElement as DBWorkspaceElement, workspaceOperations, Workspace } from '../../db/database';
 
@@ -109,6 +110,7 @@ export function WorkspaceEditor({
   } | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [workspaceSelected, setWorkspaceSelected] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   // Load workspace and elements from DB on mount
   useEffect(() => {
@@ -1349,11 +1351,16 @@ export function WorkspaceEditor({
                 Upload PDF
               </Button>
             </div>
-            {onSaveAndClose && (
-              <Button onClick={onSaveAndClose} variant="default" disabled={!title.trim()}>
-                Save and Close
+            <div className="flex gap-2">
+              <Button onClick={() => setShowShareDialog(true)} variant="outline" disabled={!title.trim()}>
+                Share
               </Button>
-            )}
+              {onSaveAndClose && (
+                <Button onClick={onSaveAndClose} variant="default" disabled={!title.trim()}>
+                  Save and Close
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1373,6 +1380,14 @@ export function WorkspaceEditor({
           }}
           workspaceId={workspaceId}
           onInsertExisting={handleInsertExistingElement}
+        />
+      )}
+
+      {/* Share Dialog */}
+      {showShareDialog && (
+        <ShareDialog
+          workspaceName={title}
+          onClose={() => setShowShareDialog(false)}
         />
       )}
     </div>
