@@ -14,7 +14,9 @@ import { WorkspaceFormatPanel } from './WorkspaceFormatPanel';
 import { ElementNameDialog } from './ElementNameDialog';
 import * as pdfjsLib from 'pdfjs-dist';
 import { elementOperations, WorkspaceElement as DBWorkspaceElement, workspaceOperations, Workspace } from '../../db/database';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+// Use worker from public directory
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 interface GridlineOptions {
   enabled: boolean;
@@ -28,6 +30,7 @@ interface SystemsTableElement extends BaseElement {
   gridlines?: GridlineOptions;
   levelWidths?: { [level: number]: number };
   meaningWidth?: number;
+  showName?: boolean;
 }
 
 
@@ -168,7 +171,9 @@ export function WorkspaceEditor({
         // Step 1: Recalculate heights for systems-table elements
         const elementsWithCorrectHeights = dbElements.map(el => {
           if (el.type === 'systems-table' && 'initialRows' in el && el.initialRows) {
-            const newHeight = calculateTableHeight(el.initialRows);
+            const tableEl = el as SystemsTableElement;
+            const hasVisibleName = el.name && (tableEl.showName !== false);
+            const newHeight = calculateTableHeight(el.initialRows, hasVisibleName);
             return { ...el, size: { ...el.size, height: newHeight } };
           }
           return el;
@@ -272,18 +277,19 @@ export function WorkspaceEditor({
     if (elements.length === 0) {
       return { x: 20, y: 20 };
     }
-    
+
     // Find the element with the highest bottom edge
     let maxBottom = 0;
     let bottomElement: WorkspaceElement | null = null;
     elements.forEach(el => {
+      // Element height now includes name header height for SystemsTable elements
       const bottom = el.position.y + el.size.height;
       if (bottom > maxBottom) {
         maxBottom = bottom;
         bottomElement = el;
       }
     });
-    
+
     // Use consistent 1-line spacing after all elements
     return { x: 20, y: maxBottom + ELEMENT_SPACING };
   };
@@ -299,7 +305,9 @@ export function WorkspaceEditor({
       workspaceId,
       position,
       zIndex: elements.length,
-      isManuallyPositioned: false
+      isManuallyPositioned: false,
+      // For systems-table elements, show name by default when adding existing
+      ...(existingElement.type === 'systems-table' && { showName: true })
     };
 
     await elementOperations.create(newElement);
@@ -346,7 +354,8 @@ export function WorkspaceEditor({
           meaning: '',
           children: []
         }];
-        const calculatedHeight = calculateTableHeight(initialRows);
+        const hasVisibleName = Boolean(name); // Name will be visible if provided
+        const calculatedHeight = calculateTableHeight(initialRows, hasVisibleName);
         newElementId = Math.random().toString(36).substring(7);
         const newElement: SystemsTableElement & { workspaceId: string } = {
           id: newElementId,
@@ -365,6 +374,7 @@ export function WorkspaceEditor({
           },
           levelWidths: { 0: 80 },
           meaningWidth: 680,
+          showName: true,
           initialRows
         };
         await elementOperations.create(newElement);
@@ -555,9 +565,6 @@ export function WorkspaceEditor({
         try {
           const arrayBuffer = await file.arrayBuffer();
 
-          // Set worker source to local worker
-          pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-
           const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
           const pageImages: string[] = [];
 
@@ -576,32 +583,25 @@ export function WorkspaceEditor({
             }
           }
 
-          // Blur all contentEditable elements before showing dialog
-          const contentEditables = document.querySelectorAll('[contenteditable="true"]');
-          contentEditables.forEach(el => {
-            if (el instanceof HTMLElement) {
-              el.blur();
-            }
-          });
-
-          // Clear any text selection
-          const selection = window.getSelection();
-          if (selection) {
-            selection.removeAllRanges();
-          }
-
-          // Show dialog after a small delay to ensure blur completes
-          setTimeout(() => {
-            setPendingElement({
-              type: 'pdf',
-              data: {
-                fileName: file.name,
-                totalPages: pdf.numPages,
-                pageImages
-              }
-            });
-            setShowNameDialog(true);
-          }, 50);
+          // Create PDF element directly without name dialog
+          const position = getNextPosition();
+          const newElementId = Math.random().toString(36).substring(7);
+          const newElement: PdfElement & { workspaceId: string } = {
+            id: newElementId,
+            workspaceId,
+            type: 'pdf',
+            position,
+            size: { width: 680, height: 800 },
+            zIndex: elements.length,
+            fileName: file.name,
+            currentPage: 1,
+            totalPages: pdf.numPages,
+            pageImages,
+            borderColor: 'transparent',
+            borderWidth: 0
+          };
+          await elementOperations.create(newElement);
+          setElements([...elements, newElement]);
         } catch (error) {
           console.error('Error processing PDF:', error);
           console.error('Error details:', error instanceof Error ? error.message : String(error));
@@ -672,7 +672,7 @@ export function WorkspaceEditor({
     }
   };
 
-  const calculateTableHeight = (rows: RowData[]): number => {
+  const calculateTableHeight = (rows: RowData[], hasVisibleName: boolean = false): number => {
     // Count total visible rows (including expanded children)
     const countVisibleRows = (rows: RowData[]): number => {
       return rows.reduce((count, row) => {
@@ -686,16 +686,25 @@ export function WorkspaceEditor({
 
     const visibleRowCount = countVisibleRows(rows);
     const rowHeight = 43; // Actual rendered height per row (127px / 3 rows = 42.3px)
-    return visibleRowCount * rowHeight;
+    const nameHeaderHeight = 34; // Name header row height: padding (6px top + 6px bottom) + minHeight (20px) + borders (~2px)
+
+    let totalHeight = visibleRowCount * rowHeight;
+    if (hasVisibleName) {
+      totalHeight += nameHeaderHeight;
+    }
+
+    return totalHeight;
   };
 
   const handleRowsChange = async (elementId: string, rows: RowData[]) => {
     tableRowsRef.current.set(elementId, rows);
 
     // Calculate and update table height
-    const newHeight = calculateTableHeight(rows);
     const element = elements.find(el => el.id === elementId);
-    if (element) {
+    if (element && element.type === 'systems-table') {
+      const tableEl = element as SystemsTableElement;
+      const hasVisibleName = element.name && (tableEl.showName !== false);
+      const newHeight = calculateTableHeight(rows, hasVisibleName);
       handleContentSizeChange(elementId, element.size.width, newHeight);
     }
 
@@ -846,12 +855,31 @@ export function WorkspaceEditor({
           onClick={(e) => {
             e.stopPropagation();
             if (e.target === e.currentTarget) {
-              // Clicked on the canvas itself, select workspace
-              setWorkspaceSelected(true);
-              setFormatPanelId('workspace');
-              setSelectedId(null);
-              setFocusedTextElementId(null);
-              setFocusedCellId(null);
+              // Check if click is on the border (use 8px click area for easier targeting)
+              const rect = e.currentTarget.getBoundingClientRect();
+              const clickX = e.clientX - rect.left;
+              const clickY = e.clientY - rect.top;
+              const clickableAreaWidth = 8; // 8px clickable area on each border
+
+              const isOnBorder = (
+                clickX <= clickableAreaWidth || // Left border
+                clickX >= rect.width - clickableAreaWidth || // Right border
+                clickY <= clickableAreaWidth || // Top border
+                clickY >= rect.height - clickableAreaWidth // Bottom border
+              );
+
+              if (isOnBorder) {
+                // Clicked on the border, select workspace
+                setWorkspaceSelected(true);
+                setFormatPanelId('workspace');
+                setSelectedId(null);
+                setFocusedTextElementId(null);
+                setFocusedCellId(null);
+              } else {
+                // Clicked inside canvas (not on border), deselect workspace
+                setWorkspaceSelected(false);
+                setFormatPanelId(null);
+              }
             }
           }}
         >
@@ -911,12 +939,20 @@ export function WorkspaceEditor({
                     gridlines={tableElement.gridlines}
                     initialLevelWidths={tableElement.levelWidths}
                     initialMeaningWidth={tableElement.meaningWidth}
+                    initialName={element.name}
+                    initialShowName={tableElement.showName ?? true}
                     onRowsChange={(rows) => handleRowsChange(element.id, rows)}
                     onLevelWidthsChange={(levelWidths) => {
                       elementOperations.update(element.id, { levelWidths } as Partial<DBWorkspaceElement>);
                     }}
                     onMeaningWidthChange={(meaningWidth) => {
                       elementOperations.update(element.id, { meaningWidth } as Partial<DBWorkspaceElement>);
+                    }}
+                    onNameChange={(name) => {
+                      elementOperations.update(element.id, { name } as Partial<DBWorkspaceElement>);
+                    }}
+                    onShowNameChange={(showName) => {
+                      elementOperations.update(element.id, { showName } as Partial<DBWorkspaceElement>);
                     }}
                     onCellFocusChange={(rowId, column, isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
                       if (isFocused) {
@@ -1048,18 +1084,24 @@ export function WorkspaceEditor({
                 isSelected={selectedId === element.id}
                 containerRef={containerRef}
                 onSelect={() => {
-                  // Explicitly blur all contentEditable elements to remove cursor
-                  const contentEditables = document.querySelectorAll('[contenteditable="true"]');
-                  contentEditables.forEach(el => {
-                    if (el instanceof HTMLElement) {
-                      el.blur();
-                    }
-                  });
-                  setSelectedId(element.id);
-                  setFormatPanelId(element.id); // Show format panel when selected
-                  setFocusedTextElementId(null); // Clear any text edit mode
-                  setFocusedCellId(null); // Clear any cell edit mode
-                  setWorkspaceSelected(false); // Deselect workspace
+                  if (selectedId === element.id && formatPanelId === element.id) {
+                    // If already selected with panel open, clicking again should deselect
+                    setSelectedId(null);
+                    setFormatPanelId(null);
+                  } else {
+                    // Explicitly blur all contentEditable elements to remove cursor
+                    const contentEditables = document.querySelectorAll('[contenteditable="true"]');
+                    contentEditables.forEach(el => {
+                      if (el instanceof HTMLElement) {
+                        el.blur();
+                      }
+                    });
+                    setSelectedId(element.id);
+                    setFormatPanelId(element.id); // Show format panel when selected
+                    setFocusedTextElementId(null); // Clear any text edit mode
+                    setFocusedCellId(null); // Clear any cell edit mode
+                    setWorkspaceSelected(false); // Deselect workspace
+                  }
                 }}
                 onUpdate={(updates) => handleUpdate(element.id, updates)}
                 onDelete={() => handleDelete(element.id)}

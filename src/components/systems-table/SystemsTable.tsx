@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { SystemsTableRow } from './SystemsTableRow';
+import { SystemsTableNameHeader } from './SystemsTableNameHeader';
 import { Undo } from 'lucide-react';
 
 export interface RowData {
@@ -25,9 +26,13 @@ interface SystemsTableProps {
   gridlines?: GridlineOptions;
   initialLevelWidths?: { [level: number]: number };
   initialMeaningWidth?: number;
+  initialName?: string;
+  initialShowName?: boolean;
   onRowsChange?: (rows: RowData[]) => void;
   onLevelWidthsChange?: (levelWidths: { [level: number]: number }) => void;
   onMeaningWidthChange?: (meaningWidth: number) => void;
+  onNameChange?: (name: string) => void;
+  onShowNameChange?: (showName: boolean) => void;
   onCellFocusChange?: (
     rowId: string,
     column: 'bid' | 'meaning',
@@ -46,9 +51,13 @@ export function SystemsTable({
   gridlines,
   initialLevelWidths,
   initialMeaningWidth,
+  initialName,
+  initialShowName = true,
   onRowsChange,
   onLevelWidthsChange,
   onMeaningWidthChange,
+  onNameChange,
+  onShowNameChange,
   onCellFocusChange,
   workspaceId,
   elementId
@@ -74,6 +83,8 @@ export function SystemsTable({
   );
 
   const [meaningWidth, setMeaningWidth] = useState<number>(initialMeaningWidth || 680); // Total table width (80 + 600)
+  const [name, setName] = useState<string>(initialName || '');
+  const [showName, setShowName] = useState<boolean>(initialShowName);
 
   const generateId = () => Math.random().toString(36).substring(7);
 
@@ -155,6 +166,16 @@ export function SystemsTable({
   const updateMeaningWidth = (width: number) => {
     setMeaningWidth(width);
     onMeaningWidthChange?.(width);
+  };
+
+  const updateName = (newName: string) => {
+    setName(newName);
+    onNameChange?.(newName);
+  };
+
+  const deleteName = () => {
+    setShowName(false);
+    onShowNameChange?.(false);
   };
 
   const getLevelWidth = (level: number): number => {
@@ -340,6 +361,17 @@ export function SystemsTable({
           ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
           : '1px solid #D1D5DB'
       }}>
+        {/* Name Header Row - Only shown if name exists and showName is true */}
+        {name && showName && (
+          <SystemsTableNameHeader
+            name={name}
+            onUpdate={updateName}
+            onDelete={deleteName}
+            meaningWidth={meaningWidth}
+            gridlines={gridlines}
+          />
+        )}
+
         {rows.map(row => (
           <SystemsTableRow
             key={row.id}

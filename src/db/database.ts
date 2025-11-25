@@ -25,6 +25,7 @@ export interface BaseElement {
   borderWidth?: number;
   fillColor?: string;
   isManuallyPositioned?: boolean;
+  name?: string;
 }
 
 export interface SystemsTableElement extends BaseElement {
@@ -38,6 +39,7 @@ export interface SystemsTableElement extends BaseElement {
   };
   levelWidths?: { [level: number]: number };
   meaningWidth?: number;
+  showName?: boolean;
 }
 
 export interface TextElement extends BaseElement {
