@@ -8,6 +8,7 @@ interface PdfElement extends BaseElement {
   currentPage: number;
   totalPages: number;
   pageImages: string[];
+  backgroundColor?: string;
 }
 
 interface PdfElementProps {
@@ -59,13 +60,15 @@ export function PdfElementComponent({
         onInteractionStart,
         onInteractionEnd
       }}
-      showFormatButton={false}
+      showFormatButton={true}
+      showDeleteButton={false}
     >
       <div className="w-full h-full flex flex-col relative">
         {/* PDF Page Display */}
-        <div 
-          className="w-full h-full flex items-center justify-center bg-white"
+        <div
+          className="w-full h-full flex items-center justify-center"
           style={{
+            backgroundColor: element.backgroundColor || 'white',
             border: element.borderWidth && element.borderWidth > 0
               ? `${element.borderWidth}px solid ${element.borderColor}`
               : 'none'
