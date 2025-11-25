@@ -6,6 +6,11 @@ export interface Workspace {
   title: string;
   createdAt: number;
   updatedAt: number;
+  borderColor?: string;
+  borderWidth?: number;
+  backgroundColor?: string;
+  canvasWidth?: number;
+  canvasHeight?: number;
 }
 
 // Element interfaces matching WorkspaceEditor types
@@ -119,7 +124,12 @@ export const workspaceOperations = {
       id: Math.random().toString(36).substring(7),
       title,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      borderColor: '#000000',
+      borderWidth: 1,
+      backgroundColor: 'white',
+      canvasWidth: 794,
+      canvasHeight: 1123
     };
     await db.workspaces.add(workspace);
     return workspace;
@@ -158,6 +168,11 @@ export const elementOperations = {
   // Create new element
   async create(element: WorkspaceElement): Promise<void> {
     await db.elements.add(element);
+  },
+
+  // Get all elements across all workspaces
+  async getAll(): Promise<WorkspaceElement[]> {
+    return await db.elements.toArray();
   },
 
   // Get all elements for a workspace

@@ -9,9 +9,11 @@ import { TextElementComponent, TextElement } from './TextElement';
 import { TextFormatPanel } from './TextFormatPanel';
 import { TextElementFormatPanel } from './TextElementFormatPanel';
 import { PdfElementComponent } from './PdfElement';
+import { PdfElementFormatPanel } from './PdfElementFormatPanel';
+import { WorkspaceFormatPanel } from './WorkspaceFormatPanel';
 import { ElementNameDialog } from './ElementNameDialog';
 import * as pdfjsLib from 'pdfjs-dist';
-import { elementOperations, WorkspaceElement as DBWorkspaceElement } from '../../db/database';
+import { elementOperations, WorkspaceElement as DBWorkspaceElement, workspaceOperations, Workspace } from '../../db/database';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 interface GridlineOptions {
@@ -42,6 +44,7 @@ interface PdfElement extends BaseElement {
   currentPage: number;
   totalPages: number;
   pageImages: string[]; // array of base64 encoded page images
+  backgroundColor?: string;
 }
 
 interface FileElement extends BaseElement {
@@ -65,7 +68,7 @@ interface WorkspaceEditorProps {
   initialElements?: WorkspaceElement[];
 }
 
-const ELEMENT_SPACING = 10; // Consistent spacing between all elements
+const ELEMENT_SPACING = 20; // 20px spacing between elements (1 line spacing)
 
 export function WorkspaceEditor({
   workspaceId,
@@ -101,11 +104,20 @@ export function WorkspaceEditor({
     type: 'systems-table' | 'text' | 'image' | 'pdf';
     data?: any;
   } | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [workspaceSelected, setWorkspaceSelected] = useState(false);
 
-  // Load elements from DB on mount
+  // Load workspace and elements from DB on mount
   useEffect(() => {
     const loadElements = async () => {
       setIsLoading(true);
+
+      // Load workspace data
+      const workspaceData = await workspaceOperations.getById(workspaceId);
+      if (workspaceData) {
+        setWorkspace(workspaceData);
+      }
+
       const dbElements = await elementOperations.getByWorkspaceId(workspaceId);
 
       if (dbElements.length === 0 && initialElements.length === 0) {
@@ -116,7 +128,7 @@ export function WorkspaceEditor({
           workspaceId,
           type: 'text',
           position: { x: 20, y: 20 },
-          size: { width: 600, height: 34 },
+          size: { width: 680, height: 34 },
           zIndex: 0,
           content: workspaceName,
           htmlContent: `<div style="text-align: center;"><span style="font-weight: bold;">${workspaceName}</span></div>`,
@@ -153,7 +165,52 @@ export function WorkspaceEditor({
           });
         }, 200);
       } else if (dbElements.length > 0) {
-        setElements(dbElements);
+        // Step 1: Recalculate heights for systems-table elements
+        const elementsWithCorrectHeights = dbElements.map(el => {
+          if (el.type === 'systems-table' && 'initialRows' in el && el.initialRows) {
+            const newHeight = calculateTableHeight(el.initialRows);
+            return { ...el, size: { ...el.size, height: newHeight } };
+          }
+          return el;
+        });
+
+        // Step 2: Recalculate positions for auto-layout elements (treat undefined as needing recalc)
+        const sortedByZIndex = [...elementsWithCorrectHeights].sort((a, b) => a.zIndex - b.zIndex);
+        let cumulativeY = 20; // Starting Y position
+        const elementsWithCorrectPositions = sortedByZIndex.map(el => {
+          if (el.isManuallyPositioned === true) {
+            return el; // Don't change manually positioned elements
+          }
+
+          const newPosition = { x: 20, y: cumulativeY };
+          cumulativeY += el.size.height + ELEMENT_SPACING;
+          return { ...el, position: newPosition, isManuallyPositioned: false };
+        });
+
+        setElements(elementsWithCorrectPositions);
+
+        // Step 3: Update changed elements in database
+        for (const el of elementsWithCorrectPositions) {
+          const originalEl = dbElements.find(dbe => dbe.id === el.id);
+          if (originalEl) {
+            const updates: Partial<DBWorkspaceElement> = {};
+
+            // Check if height changed
+            if (el.size.height !== originalEl.size.height) {
+              updates.size = el.size;
+            }
+
+            // Check if position changed
+            if (el.position.y !== originalEl.position.y || el.position.x !== originalEl.position.x) {
+              updates.position = el.position;
+            }
+
+            // Update if there are changes
+            if (Object.keys(updates).length > 0) {
+              await elementOperations.update(el.id, updates);
+            }
+          }
+        }
       } else if (initialElements.length > 0) {
         // Use initial elements if provided (for popup comment boxes)
         setElements(initialElements);
@@ -202,6 +259,14 @@ export function WorkspaceEditor({
     onTitleChange?.(newTitle);
   };
 
+  const handleWorkspaceUpdate = async (updates: Partial<Workspace>) => {
+    if (workspace) {
+      const updatedWorkspace = { ...workspace, ...updates };
+      setWorkspace(updatedWorkspace);
+      await workspaceOperations.update(workspaceId, updates);
+    }
+  };
+
   const getNextPosition = () => {
     // Find the bottom-most element and add consistent spacing below it
     if (elements.length === 0) {
@@ -219,9 +284,51 @@ export function WorkspaceEditor({
       }
     });
     
-    // Use less spacing after tables, normal spacing after other elements
-    const spacing = bottomElement?.type === 'systems-table' ? 5 : ELEMENT_SPACING;
-    return { x: 20, y: maxBottom + spacing };
+    // Use consistent 1-line spacing after all elements
+    return { x: 20, y: maxBottom + ELEMENT_SPACING };
+  };
+
+  const handleInsertExistingElement = async (existingElement: DBWorkspaceElement) => {
+    // Create a copy of the existing element with a new ID and position in this workspace
+    const position = getNextPosition();
+    const newElementId = Math.random().toString(36).substring(7);
+
+    const newElement = {
+      ...existingElement,
+      id: newElementId,
+      workspaceId,
+      position,
+      zIndex: elements.length,
+      isManuallyPositioned: false
+    };
+
+    await elementOperations.create(newElement);
+    setElements([...elements, newElement as WorkspaceElement]);
+
+    setShowNameDialog(false);
+    setPendingElement(null);
+
+    // Auto-focus text elements' contentEditable after creation
+    if (newElement.type === 'text') {
+      setTimeout(() => {
+        const textElements = document.querySelectorAll('[data-text-element-id]');
+        textElements.forEach(el => {
+          const elementId = el.getAttribute('data-text-element-id');
+          if (elementId === newElementId) {
+            const contentEditable = el.querySelector('[contenteditable="true"]');
+            if (contentEditable instanceof HTMLElement) {
+              contentEditable.focus();
+              const range = document.createRange();
+              const selection = window.getSelection();
+              range.selectNodeContents(contentEditable);
+              range.collapse(false);
+              selection?.removeAllRanges();
+              selection?.addRange(range);
+            }
+          }
+        });
+      }, 200);
+    }
   };
 
   const createElementWithName = async (name: string) => {
@@ -232,8 +339,14 @@ export function WorkspaceEditor({
 
     switch (pendingElement.type) {
       case 'systems-table': {
-        const initialRowCount = 1;
-        const calculatedHeight = Math.max(100, initialRowCount * 80 + 20);
+        const initialRows: RowData[] = [{
+          id: '1',
+          bid: '',
+          bidFillColor: undefined,
+          meaning: '',
+          children: []
+        }];
+        const calculatedHeight = calculateTableHeight(initialRows);
         newElementId = Math.random().toString(36).substring(7);
         const newElement: SystemsTableElement & { workspaceId: string } = {
           id: newElementId,
@@ -251,7 +364,8 @@ export function WorkspaceEditor({
             width: 1
           },
           levelWidths: { 0: 80 },
-          meaningWidth: 680
+          meaningWidth: 680,
+          initialRows
         };
         await elementOperations.create(newElement);
         setElements([...elements, newElement]);
@@ -265,7 +379,7 @@ export function WorkspaceEditor({
           name: name || undefined,
           type: 'text',
           position,
-          size: { width: 600, height: 34 },
+          size: { width: 680, height: 34 },
           zIndex: elements.length,
           content: '',
           borderColor: 'transparent',
@@ -304,7 +418,7 @@ export function WorkspaceEditor({
           name: name || undefined,
           type: 'pdf',
           position,
-          size: { width: 600, height: 800 },
+          size: { width: 680, height: 800 },
           zIndex: elements.length,
           fileName,
           currentPage: 1,
@@ -558,8 +672,33 @@ export function WorkspaceEditor({
     }
   };
 
+  const calculateTableHeight = (rows: RowData[]): number => {
+    // Count total visible rows (including expanded children)
+    const countVisibleRows = (rows: RowData[]): number => {
+      return rows.reduce((count, row) => {
+        let rowCount = 1; // Count the row itself
+        if (row.children.length > 0 && !row.collapsed) {
+          rowCount += countVisibleRows(row.children);
+        }
+        return count + rowCount;
+      }, 0);
+    };
+
+    const visibleRowCount = countVisibleRows(rows);
+    const rowHeight = 43; // Actual rendered height per row (127px / 3 rows = 42.3px)
+    return visibleRowCount * rowHeight;
+  };
+
   const handleRowsChange = async (elementId: string, rows: RowData[]) => {
     tableRowsRef.current.set(elementId, rows);
+
+    // Calculate and update table height
+    const newHeight = calculateTableHeight(rows);
+    const element = elements.find(el => el.id === elementId);
+    if (element) {
+      handleContentSizeChange(elementId, element.size.width, newHeight);
+    }
+
     // Persist to database
     await elementOperations.update(elementId, { initialRows: rows } as Partial<DBWorkspaceElement>);
   };
@@ -590,6 +729,8 @@ export function WorkspaceEditor({
       setSelectedId(null);
       setFocusedTextElementId(null);
       setFocusedCellId(null);
+      setWorkspaceSelected(false);
+      setFormatPanelId(null);
     }
   };
 
@@ -664,7 +805,7 @@ export function WorkspaceEditor({
   const selectedElement = elements.find(el => el.id === formatPanelId);
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full flex flex-col relative">
       {/* Loading State */}
       {isLoading && (
         <div className="flex-1 flex items-center justify-center">
@@ -676,10 +817,44 @@ export function WorkspaceEditor({
       {!isLoading && (
         <>
       <div
-        ref={containerRef}
-        className="flex-1 relative overflow-auto bg-white p-8"
+        className="flex-1 relative bg-white"
         onClick={handleContainerClick}
+        style={{ overflow: 'scroll', minHeight: '100%' }}
       >
+        <div style={{
+          display: 'block',
+          padding: '0 20px 20px 0',
+          minWidth: 'fit-content',
+          minHeight: 'fit-content'
+        }}>
+        {/* Workspace Canvas with Border */}
+        <div
+          ref={containerRef}
+          className="relative"
+          style={{
+            width: `${workspace?.canvasWidth || 794}px`,
+            height: `${workspace?.canvasHeight || 1123}px`,
+            backgroundColor: workspace?.backgroundColor || 'white',
+            borderTop: `${workspace?.borderWidth || 1}px solid ${workspace?.borderColor || '#000000'}`,
+            borderRight: `${workspace?.borderWidth || 1}px solid ${workspace?.borderColor || '#000000'}`,
+            borderBottom: `${workspace?.borderWidth || 1}px solid ${workspace?.borderColor || '#000000'}`,
+            borderLeft: `${workspace?.borderWidth || 1}px solid ${workspace?.borderColor || '#000000'}`,
+            boxShadow: workspaceSelected ? '0 0 0 2px #3B82F6' : 'none',
+            cursor: 'default',
+            boxSizing: 'border-box'
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (e.target === e.currentTarget) {
+              // Clicked on the canvas itself, select workspace
+              setWorkspaceSelected(true);
+              setFormatPanelId('workspace');
+              setSelectedId(null);
+              setFocusedTextElementId(null);
+              setFocusedCellId(null);
+            }
+          }}
+        >
         {elements.map((element) => {
           if (element.type === 'systems-table') {
             const tableElement = element as SystemsTableElement;
@@ -706,6 +881,7 @@ export function WorkspaceEditor({
                     setSelectedId(element.id);
                     setFocusedCellId(null); // Clear cell edit mode when selecting table
                     setFormatPanelId(element.id); // Show format panel when selected
+                    setWorkspaceSelected(false); // Deselect workspace
                   },
                   onUpdate: (updates) => handleUpdate(element.id, updates),
                   onDelete: () => handleDelete(element.id),
@@ -790,6 +966,7 @@ export function WorkspaceEditor({
                   });
                   setSelectedId(element.id);
                   setFocusedTextElementId(null); // Clear edit mode when selecting element
+                  setWorkspaceSelected(false); // Deselect workspace
                 }}
                 onUpdate={(updates) => handleUpdate(element.id, updates)}
                 onDelete={() => handleDelete(element.id)}
@@ -840,6 +1017,7 @@ export function WorkspaceEditor({
                     setSelectedId(element.id);
                     setFocusedTextElementId(null); // Clear any text edit mode
                     setFocusedCellId(null); // Clear any cell edit mode
+                    setWorkspaceSelected(false); // Deselect workspace
                   },
                   onUpdate: (updates) => handleUpdate(element.id, updates),
                   onDelete: () => handleDelete(element.id),
@@ -878,8 +1056,10 @@ export function WorkspaceEditor({
                     }
                   });
                   setSelectedId(element.id);
+                  setFormatPanelId(element.id); // Show format panel when selected
                   setFocusedTextElementId(null); // Clear any text edit mode
                   setFocusedCellId(null); // Clear any cell edit mode
+                  setWorkspaceSelected(false); // Deselect workspace
                 }}
                 onUpdate={(updates) => handleUpdate(element.id, updates)}
                 onDelete={() => handleDelete(element.id)}
@@ -898,7 +1078,10 @@ export function WorkspaceEditor({
                 isSelected={selectedId === element.id}
                 containerRef={containerRef}
                 actions={{
-                  onSelect: () => setSelectedId(element.id),
+                  onSelect: () => {
+                    setSelectedId(element.id);
+                    setWorkspaceSelected(false);
+                  },
                   onUpdate: (updates) => handleUpdate(element.id, updates),
                   onDelete: () => handleDelete(element.id),
                   onInteractionStart: () => setIsInteracting(true),
@@ -933,11 +1116,43 @@ export function WorkspaceEditor({
           
           return null;
         })}
+        </div>
+        {/* End Workspace Canvas */}
+        </div>
+        {/* End Wrapper */}
+
+        {/* Format Panel for Workspace */}
+        {workspaceSelected && formatPanelId === 'workspace' && workspace && (
+          <WorkspaceFormatPanel
+            workspace={workspace}
+            onUpdate={handleWorkspaceUpdate}
+            onClose={() => {
+              setWorkspaceSelected(false);
+              setFormatPanelId(null);
+            }}
+            onDelete={onClose}
+          />
+        )}
 
         {/* Format Panel for Systems Tables */}
         {selectedElement && selectedElement.type === 'systems-table' && formatPanelId && (
           <SystemsTableFormatPanel
             element={selectedElement as SystemsTableElement}
+            onUpdate={(updates) => handleUpdate(formatPanelId, updates)}
+            onClose={() => setFormatPanelId(null)}
+            onDelete={() => {
+              if (formatPanelId) {
+                handleDelete(formatPanelId);
+                setFormatPanelId(null);
+              }
+            }}
+          />
+        )}
+
+        {/* Format Panel for PDF Elements */}
+        {selectedElement && selectedElement.type === 'pdf' && formatPanelId && (
+          <PdfElementFormatPanel
+            element={selectedElement as PdfElement}
             onUpdate={(updates) => handleUpdate(formatPanelId, updates)}
             onClose={() => setFormatPanelId(null)}
             onDelete={() => {
@@ -1023,6 +1238,7 @@ export function WorkspaceEditor({
           </div>
         )}
       </div>
+      {/* End Scrollable Container */}
 
       {/* Bottom Button Bar */}
       {!hideControls && (
@@ -1050,7 +1266,7 @@ export function WorkspaceEditor({
           </div>
         </div>
       )}
-        </>
+      </>
       )}
 
       {/* Element Name Dialog */}
@@ -1064,6 +1280,8 @@ export function WorkspaceEditor({
             setShowNameDialog(false);
             setPendingElement(null);
           }}
+          workspaceId={workspaceId}
+          onInsertExisting={handleInsertExistingElement}
         />
       )}
     </div>
