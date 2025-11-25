@@ -121,6 +121,16 @@ Interactive workspace web app for bridge partnerships to collaboratively build a
    - Next: Manual browser testing and acceptance tests
    - Location: See EDITOR_STABILITY_PLAN.md for full details
 
+5. **Workspace Element Improvements** - COMPLETED 2025-11-25
+   - Fixed: Table height calculation includes name header (34px) for proper element spacing
+   - Fixed: PDF upload worker errors (local worker file in public/ directory)
+   - Fixed: Workspace format panel only appears on border clicks (8px detection area)
+   - Fixed: Duplicate name validation with real-time checking and red border warning
+   - Fixed: PDF elements created directly without name dialog
+   - Fixed: Format panels close properly when clicking away or on Apply button
+   - Location: WorkspaceEditor.tsx, ElementNameDialog.tsx, PdfElement.tsx
+   - All features tested and working in browser
+
 ## File Structure
 ```
 src/
