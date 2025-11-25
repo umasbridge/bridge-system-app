@@ -27,7 +27,8 @@ interface TextElementProps {
   onDelete: () => void;
   existingWorkspaces: string[];
   onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => void;
-  onFocusChange?: (isFocused: boolean, applyFormatFn?: (format: any) => void, applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'new-page') => void, selectedText?: string) => void;
+  onFocusChange?: (isFocused: boolean, applyFormatFn?: (format: any) => void, applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void, selectedText?: string) => void;
+  readOnly?: boolean;
 }
 
 export function TextElementComponent({
@@ -39,7 +40,8 @@ export function TextElementComponent({
   onDelete,
   existingWorkspaces,
   onNavigateToWorkspace,
-  onFocusChange
+  onFocusChange,
+  readOnly = false
 }: TextElementProps) {
   const contentEditableRef = useRef<HTMLDivElement>(null);
   const historyController = useRef<HistoryController>(createHistoryController());
@@ -1189,7 +1191,7 @@ export function TextElementComponent({
     }
   };
 
-  const applyHyperlink = (workspaceName: string, linkType: 'comment' | 'new-page') => {
+  const applyHyperlink = (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => {
     if (!savedSelection || !contentEditableRef.current) return;
 
     // Restore the selection
@@ -1266,20 +1268,20 @@ export function TextElementComponent({
 
           <div
             ref={contentEditableRef}
-            contentEditable
+            contentEditable={!readOnly}
             onClick={handleClick}
-            onInput={handleInput}
+            onInput={readOnly ? undefined : handleInput}
             onMouseDown={handleMouseDown}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
-            onMouseUp={handleTextSelect}
-            onKeyUp={handleTextSelect}
+            onKeyDown={readOnly ? undefined : handleKeyDown}
+            onPaste={readOnly ? undefined : handlePaste}
+            onFocus={readOnly ? undefined : handleFocus}
+            onBlur={readOnly ? undefined : handleBlur}
+            onMouseUp={readOnly ? undefined : handleTextSelect}
+            onKeyUp={readOnly ? undefined : handleTextSelect}
             data-placeholder="Type here..."
             className="w-full outline-none"
             style={{
-              cursor: isSelected ? 'text' : 'default',
+              cursor: readOnly ? 'default' : (isSelected ? 'text' : 'default'),
               minHeight: '100%' // Take at least full parent height
             }}
             suppressContentEditableWarning
