@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageSquare, FileText, X } from 'lucide-react';
+import { MessageSquare, Columns, FileText, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -8,7 +8,7 @@ interface WorkspaceHyperlinkMenuProps {
   position: { x: number; y: number };
   selectedText: string;
   onClose: () => void;
-  onApply: (workspaceName: string, linkType: 'comment' | 'new-page') => void;
+  onApply: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void;
   existingWorkspaces: string[];
 }
 
@@ -20,7 +20,7 @@ export function WorkspaceHyperlinkMenu({
   existingWorkspaces 
 }: WorkspaceHyperlinkMenuProps) {
   const [workspaceName, setWorkspaceName] = useState(selectedText || '');
-  const [selectedLinkType, setSelectedLinkType] = useState<'comment' | 'new-page' | null>(null);
+  const [selectedLinkType, setSelectedLinkType] = useState<'comment' | 'split-view' | 'new-page' | null>(null);
 
   const handleApply = () => {
     if (workspaceName.trim() && selectedLinkType) {
@@ -110,10 +110,25 @@ export function WorkspaceHyperlinkMenu({
             </button>
 
             <button
+              onClick={() => setSelectedLinkType('split-view')}
+              className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all hover:border-green-300 ${
+                selectedLinkType === 'split-view'
+                  ? 'border-green-500 bg-green-50'
+                  : 'border-gray-200'
+              }`}
+            >
+              <Columns className="h-5 w-5 text-green-600" />
+              <div className="flex-1 text-left">
+                <p className="font-medium text-sm">Split View</p>
+                <p className="text-xs text-gray-500">Opens side-by-side</p>
+              </div>
+            </button>
+
+            <button
               onClick={() => setSelectedLinkType('new-page')}
               className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all hover:border-purple-300 ${
-                selectedLinkType === 'new-page' 
-                  ? 'border-purple-500 bg-purple-50' 
+                selectedLinkType === 'new-page'
+                  ? 'border-purple-500 bg-purple-50'
                   : 'border-gray-200'
               }`}
             >

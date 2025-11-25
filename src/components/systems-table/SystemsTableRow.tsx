@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { Palette, ChevronRight, ChevronDown } from 'lucide-react';
 import { Resizable } from 're-resizable';
 import { RichTextCell } from './RichTextCell';
 import { ColorPicker } from './ColorPicker';
@@ -32,11 +31,12 @@ interface SystemsTableRowProps {
     column: 'bid' | 'meaning',
     isFocused: boolean,
     applyFormatFn?: (format: any) => void,
-    applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'new-page') => void,
+    applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void,
     selectedText?: string
   ) => void;
   workspaceId?: string;
   elementId?: string;
+  isViewMode?: boolean;
 }
 
 export function SystemsTableRow({
@@ -57,9 +57,11 @@ export function SystemsTableRow({
   gridlines,
   onCellFocusChange,
   workspaceId,
-  elementId
+  elementId,
+  isViewMode = false
 }: SystemsTableRowProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [isCellSelected, setIsCellSelected] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -109,7 +111,44 @@ export function SystemsTableRow({
   const handleColorSelect = (color: string | undefined) => {
     onUpdate(row.id, { bidFillColor: color });
     setShowColorPicker(false);
+    setIsCellSelected(false);
   };
+
+  const handleCornerClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsCellSelected(!isCellSelected);
+    setShowColorPicker(!isCellSelected); // Show picker when selecting, hide when deselecting
+  };
+
+  // Close selection when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!isCellSelected) return;
+
+      const target = e.target as HTMLElement;
+
+      // Check if clicking on the corner indicator, color picker, or collapse triangle
+      const isCornerIndicator = target.closest('[title="Click to select cell for fill color"]');
+      const isColorPicker = target.closest('.absolute.left-0.top-full'); // Color picker container
+      const isCollapseTriangle = target.closest('[title="Expand"]') || target.closest('[title="Collapse"]');
+
+      // If clicking on corner indicator, color picker, or collapse triangle, don't deselect
+      if (isCornerIndicator || isColorPicker || isCollapseTriangle) {
+        return;
+      }
+
+      // Otherwise, deselect
+      setIsCellSelected(false);
+      setShowColorPicker(false);
+    };
+
+    if (isCellSelected) {
+      // Use capture phase to catch events before they're stopped by child handlers
+      document.addEventListener('mousedown', handleClickOutside, true);
+      return () => document.removeEventListener('mousedown', handleClickOutside, true);
+    }
+  }, [isCellSelected]);
 
   return (
     <div>
@@ -166,28 +205,10 @@ export function SystemsTableRow({
             borderTop: gridlines?.enabled
               ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
               : '1px solid #D1D5DB',
+            boxShadow: isCellSelected ? 'inset 0 0 0 2px #3B82F6' : 'none',
           }}
         >
           <div className="pl-1.5 pr-1 py-1.5 flex items-center relative" data-column-type="bid">
-            {/* Collapse/Expand Icon - Shows when row has children */}
-            {row.children.length > 0 && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleCollapsed(row.id);
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                className="mr-1 p-0.5 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
-                title={row.collapsed ? "Expand" : "Collapse"}
-              >
-                {row.collapsed ? (
-                  <ChevronRight className="h-3.5 w-3.5 text-gray-600" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5 text-gray-600" />
-                )}
-              </button>
-            )}
-
             <div className="flex-1 relative">
               <RichTextCell
                 key={`${row.id}-${bidColumnWidth}`}
@@ -204,31 +225,66 @@ export function SystemsTableRow({
                 }}
                 workspaceId={workspaceId}
                 elementId={`${elementId}-${row.id}-bid`}
+                readOnly={isViewMode}
               />
+
+              {/* Collapse/Expand Triangle - Vertex at bottom right corner, shows when row has children */}
+              {row.children.length > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onToggleCollapsed(row.id);
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  className="absolute cursor-pointer hover:opacity-80 transition-opacity"
+                  title={row.collapsed ? "Expand" : "Collapse"}
+                  data-collapse-triangle="true"
+                  style={{
+                    bottom: '-6px', // Extend to align with cell bottom border (compensate for py-1.5 padding)
+                    right: '-4px', // Extend to align with cell edge (compensate for pr-1 padding)
+                    width: '12px',
+                    height: '12px',
+                    backgroundColor: row.collapsed ? '#3B82F6' : '#3B82F6',
+                    clipPath: row.collapsed
+                      ? 'polygon(0 0, 100% 100%, 0 100%)' // Right-pointing: vertex at right
+                      : 'polygon(0 0, 100% 0, 100% 100%)', // Down-pointing: vertex at bottom-right
+                    zIndex: 10,
+                    pointerEvents: 'auto',
+                  }}
+                />
+              )}
+
+              {/* Corner Indicator - Click to select cell for fill color */}
+              {!isViewMode && (
+                <div
+                  onClick={handleCornerClick}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className={`absolute top-0 right-0 w-3 h-3 cursor-pointer transition-opacity ${
+                    isHovered || isCellSelected ? 'opacity-100' : 'opacity-0'
+                  }`}
+                  style={{
+                    backgroundColor: isCellSelected ? '#3B82F6' : '#9CA3AF',
+                    clipPath: 'polygon(0 0, 100% 0, 100% 100%)',
+                  }}
+                  title="Click to select cell for fill color"
+                />
+              )}
             </div>
 
-            {/* Color Picker Button */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowColorPicker(!showColorPicker);
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              className={`ml-1 p-1 rounded hover:bg-gray-200 transition-opacity ${
-                isHovered || showColorPicker ? 'opacity-100' : 'opacity-0'
-              }`}
-              title="Set fill color"
-            >
-              <Palette className="h-3 w-3 text-gray-600" />
-            </button>
-            
             {/* Color Picker Popover */}
-            {showColorPicker && (
+            {showColorPicker && !isViewMode && (
               <div className="absolute top-full left-0 mt-1 z-50">
                 <ColorPicker
                   currentColor={row.bidFillColor}
                   onColorSelect={handleColorSelect}
-                  onClose={() => setShowColorPicker(false)}
+                  onClose={() => {
+                    setShowColorPicker(false);
+                    setIsCellSelected(false);
+                  }}
                 />
               </div>
             )}
@@ -289,10 +345,11 @@ export function SystemsTableRow({
             }}
             workspaceId={workspaceId}
             elementId={`${elementId}-${row.id}-meaning`}
+            readOnly={isViewMode}
           />
 
           {/* Action Buttons - Inside meaning column, extreme right */}
-          {isHovered && (
+          {isHovered && !isViewMode && (
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-2 bg-white/90 px-2 py-1 rounded shadow-sm">
               <button
                 onClick={(e) => {
@@ -369,6 +426,7 @@ export function SystemsTableRow({
               onCellFocusChange={onCellFocusChange}
               workspaceId={workspaceId}
               elementId={elementId}
+              isViewMode={isViewMode}
             />
           ))}
         </div>

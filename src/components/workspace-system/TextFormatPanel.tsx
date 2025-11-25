@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Bold, Italic, Underline, Strikethrough, Highlighter, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, IndentIncrease, IndentDecrease, Link2, MessageSquare, FileText } from 'lucide-react';
+import { X, Bold, Italic, Underline, Strikethrough, Highlighter, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, IndentIncrease, IndentDecrease, Link2, MessageSquare, Columns, FileText } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
@@ -9,7 +9,7 @@ interface TextFormatPanelProps {
   selectedText: string;
   onClose: () => void;
   onApply: (format: TextFormat) => void;
-  onApplyHyperlink?: (workspaceName: string, linkType: 'comment' | 'new-page') => void;
+  onApplyHyperlink?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void;
   isSidePanel?: boolean;
 }
 
@@ -60,7 +60,7 @@ export function TextFormatPanel({ position, selectedText, onClose, onApply, onAp
 
   const [showHyperlinkSection, setShowHyperlinkSection] = useState(false);
   const [workspaceName, setWorkspaceName] = useState(selectedText || '');
-  const [linkType, setLinkType] = useState<'comment' | 'new-page' | null>(null);
+  const [linkType, setLinkType] = useState<'comment' | 'split-view' | 'new-page' | null>(null);
 
   // Update workspace name when selected text changes
   useEffect(() => {
@@ -157,7 +157,7 @@ export function TextFormatPanel({ position, selectedText, onClose, onApply, onAp
           </div>
           <div>
             <Label className="text-xs mb-1 block">Link Type</Label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Button
                 onClick={() => setLinkType('comment')}
                 variant={linkType === 'comment' ? 'default' : 'outline'}
@@ -166,6 +166,15 @@ export function TextFormatPanel({ position, selectedText, onClose, onApply, onAp
               >
                 <MessageSquare className="h-4 w-4" />
                 Comment
+              </Button>
+              <Button
+                onClick={() => setLinkType('split-view')}
+                variant={linkType === 'split-view' ? 'default' : 'outline'}
+                size="sm"
+                className="w-full gap-2"
+              >
+                <Columns className="h-4 w-4" />
+                Split View
               </Button>
               <Button
                 onClick={() => setLinkType('new-page')}

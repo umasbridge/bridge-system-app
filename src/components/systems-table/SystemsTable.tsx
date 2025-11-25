@@ -38,12 +38,27 @@ interface SystemsTableProps {
     column: 'bid' | 'meaning',
     isFocused: boolean,
     applyFormatFn?: (format: any) => void,
-    applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'new-page') => void,
+    applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void,
     selectedText?: string
   ) => void;
   workspaceId?: string;
   elementId?: string;
+  isViewMode?: boolean;
 }
+
+// Helper function to recursively collapse all rows that have children
+const collapseAllRows = (rows: RowData[]): RowData[] => {
+  return rows.map(row => {
+    if (row.children.length > 0) {
+      return {
+        ...row,
+        collapsed: true,
+        children: collapseAllRows(row.children)
+      };
+    }
+    return row;
+  });
+};
 
 export function SystemsTable({
   breadcrumbMode = false,
@@ -60,10 +75,16 @@ export function SystemsTable({
   onShowNameChange,
   onCellFocusChange,
   workspaceId,
-  elementId
+  elementId,
+  isViewMode = false
 }: SystemsTableProps) {
-  const [rows, setRows] = useState<RowData[]>(
-    initialRows || [
+  const [rows, setRows] = useState<RowData[]>(() => {
+    // If initialRows are provided, collapse all rows with children by default
+    if (initialRows) {
+      return collapseAllRows(initialRows);
+    }
+    // Otherwise, start with default empty row
+    return [
       {
         id: '1',
         bid: '',
@@ -71,8 +92,8 @@ export function SystemsTable({
         meaning: '',
         children: []
       }
-    ]
-  );
+    ];
+  });
 
   const [history, setHistory] = useState<RowData[][]>([]);
   const [showUndoHighlight, setShowUndoHighlight] = useState(false);
@@ -334,7 +355,20 @@ export function SystemsTable({
     const toggleRecursive = (rows: RowData[]): RowData[] => {
       return rows.map(row => {
         if (row.id === id) {
-          return { ...row, collapsed: !row.collapsed };
+          const newCollapsedState = !row.collapsed;
+
+          // If we're expanding this row, collapse all immediate children that have children
+          if (newCollapsedState === false && row.children.length > 0) {
+            const updatedChildren = row.children.map(child => {
+              if (child.children.length > 0 && !child.collapsed) {
+                return { ...child, collapsed: true };
+              }
+              return child;
+            });
+            return { ...row, collapsed: newCollapsedState, children: updatedChildren };
+          }
+
+          return { ...row, collapsed: newCollapsedState };
         }
         if (row.children.length > 0) {
           return { ...row, children: toggleRecursive(row.children) };
@@ -393,6 +427,7 @@ export function SystemsTable({
             onCellFocusChange={onCellFocusChange}
             workspaceId={workspaceId}
             elementId={elementId}
+            isViewMode={isViewMode}
           />
         ))}
       </div>

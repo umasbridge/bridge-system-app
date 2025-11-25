@@ -21,11 +21,12 @@ interface RichTextCellProps {
   onFocusChange?: (
     isFocused: boolean,
     applyFormatFn?: (format: any) => void,
-    applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'new-page') => void,
+    applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void,
     selectedText?: string
   ) => void;
   workspaceId?: string;
   elementId?: string;
+  readOnly?: boolean;
 }
 
 export function RichTextCell({
@@ -37,6 +38,7 @@ export function RichTextCell({
   onFocusChange,
   workspaceId,
   elementId,
+  readOnly = false,
 }: RichTextCellProps) {
   const contentEditableRef = useRef<HTMLDivElement>(null);
   const [hasTextSelection, setHasTextSelection] = useState(false);
@@ -179,6 +181,60 @@ export function RichTextCell({
       }
     };
   }, []);
+
+  // Handle clicks outside the cell to deselect
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!isFocused || !contentEditableRef.current) return;
+
+      const target = e.target as HTMLElement;
+
+      // Check if click is outside the contentEditable
+      if (!contentEditableRef.current.contains(target)) {
+        // Also check if clicking on format panel, hyperlink menu, or collapse triangle (don't deselect in that case)
+        if (target.closest('[data-text-format-panel]') ||
+            target.closest('[data-hyperlink-menu]') ||
+            target.closest('[data-collapse-triangle]')) {
+          return;
+        }
+
+        // Clear the selection
+        const selection = window.getSelection();
+        if (selection) {
+          selection.removeAllRanges();
+        }
+
+        // Commit any pending changes
+        if (commitTimerRef.current) {
+          clearTimeout(commitTimerRef.current);
+          commitTimerRef.current = null;
+        }
+        commitMutation();
+
+        // Update state
+        setIsFocused(false);
+        setHasTextSelection(false);
+        setSelectedImage(null);
+
+        // Notify parent
+        if (onFocusChange) {
+          onFocusChange(false);
+        }
+      }
+    };
+
+    if (isFocused) {
+      // Small delay to prevent immediate deselection when clicking to focus
+      const timeoutId = setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 10);
+
+      return () => {
+        clearTimeout(timeoutId);
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isFocused, onFocusChange]);
 
   // Initialize content on mount
   useEffect(() => {
@@ -1178,20 +1234,20 @@ export function RichTextCell({
 
         <div
           ref={contentEditableRef}
-          contentEditable
-          onInput={handleInput}
+          contentEditable={!readOnly}
+          onInput={readOnly ? undefined : handleInput}
           onClick={handleClick}
           onMouseDown={handleMouseDown}
-          onKeyDown={handleKeyDown}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          onPaste={handlePaste}
-          onMouseUp={handleTextSelect}
-          onKeyUp={handleTextSelect}
+          onKeyDown={readOnly ? undefined : handleKeyDown}
+          onFocus={readOnly ? undefined : handleFocus}
+          onBlur={readOnly ? undefined : handleBlur}
+          onPaste={readOnly ? undefined : handlePaste}
+          onMouseUp={readOnly ? undefined : handleTextSelect}
+          onKeyUp={readOnly ? undefined : handleTextSelect}
           data-placeholder={placeholder}
           className="w-full outline-none"
           style={{
-            cursor: 'text',
+            cursor: readOnly ? 'default' : 'text',
             minHeight: `${minHeight}px`,
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
@@ -1281,6 +1337,25 @@ export function RichTextCell({
             </div>
           );
         })(),
+        document.body
+      )}
+
+      {/* Hyperlink Menu - Rendered in Portal */}
+      {showHyperlinkMenu && workspaceContext && createPortal(
+        <WorkspaceHyperlinkMenu
+          position={selectionPosition}
+          selectedText={selectedText}
+          onClose={() => {
+            setShowHyperlinkMenu(false);
+            setHasTextSelection(false);
+          }}
+          onApply={(workspaceName, linkType) => {
+            applyHyperlink(workspaceName, linkType);
+            setShowHyperlinkMenu(false);
+            setHasTextSelection(false);
+          }}
+          existingWorkspaces={workspaceContext.workspaces.map(w => w.title)}
+        />,
         document.body
       )}
     </>
