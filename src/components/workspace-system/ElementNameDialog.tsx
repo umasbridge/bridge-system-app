@@ -125,91 +125,121 @@ export function ElementNameDialog({ elementType, onConfirm, onCancel, onInsertEx
       onKeyDown={(e) => e.stopPropagation()}
     >
       <div
-        className="bg-white rounded-lg shadow-xl p-6 w-[600px] max-h-[70vh] overflow-y-auto"
+        className="bg-white rounded-lg shadow-2xl w-[580px] max-h-[80vh] overflow-y-auto"
         style={{ position: 'relative' }}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        {/* Title */}
-        <h2 className="text-lg font-semibold text-center mb-12">Insert {elementType} Element</h2>
-
-        {/* Mode Selection Buttons */}
-        <div className="flex gap-4 mb-12">
-          <Button
-            type="button"
-            onClick={() => setMode('create')}
-            className="flex-1"
-            variant={mode === 'create' ? 'default' : 'outline'}
-          >
-            Create New
-          </Button>
-          {onInsertExisting && (
-            <Button
-              type="button"
-              onClick={() => setMode('existing')}
-              className="flex-1"
-              variant={mode === 'existing' ? 'default' : 'outline'}
-            >
-              Add Existing
-            </Button>
-          )}
+        {/* Line 1: Title */}
+        <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingTop: '48px', paddingBottom: '40px' }}>
+          <h2 style={{ fontSize: '30px', fontWeight: '800', textAlign: 'center', color: '#111827' }}>
+            Insert {elementType} Element
+          </h2>
         </div>
 
-        {/* Content Area */}
-        <form onSubmit={handleSubmit}>
-          {mode === 'existing' && existingElements.length > 0 && (
-            <div className="mb-10 flex items-center gap-3">
-              <Label htmlFor="existing-element" className="text-sm whitespace-nowrap min-w-[80px]">
-                Select:
-              </Label>
-              <select
-                id="existing-element"
-                value={selectedExistingElement?.id || ''}
-                onChange={(e) => {
-                  const element = existingElements.find(el => el.id === e.target.value);
-                  setSelectedExistingElement(element || null);
-                }}
-                className="flex-1 h-10 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        {/* Line 2: Mode Selection Buttons */}
+        <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingBottom: '40px' }}>
+          <div className="flex gap-4">
+            <Button
+              type="button"
+              onClick={() => setMode('create')}
+              className="flex-1 h-12 px-8 text-base font-medium"
+              variant={mode === 'create' ? 'default' : 'outline'}
+            >
+              Create New
+            </Button>
+            {onInsertExisting && (
+              <Button
+                type="button"
+                onClick={() => setMode('existing')}
+                className="flex-1 h-12 px-8 text-base font-medium"
+                variant={mode === 'existing' ? 'default' : 'outline'}
               >
-                <option value="">Choose an element...</option>
-                {existingElements.map(element => (
-                  <option key={element.id} value={element.id}>
-                    {element.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {mode === 'existing' && existingElements.length === 0 && (
-            <div className="mb-12 text-center text-gray-500 py-6">
-              No existing {elementType.toLowerCase()} elements found
-            </div>
-          )}
-
-          <div className="mb-12 flex items-center gap-3">
-            <Label htmlFor="element-name" className="text-sm whitespace-nowrap min-w-[80px]">
-              {mode === 'existing' && selectedExistingElement ? 'New Name:' : 'Name:'}
-            </Label>
-            <Input
-              ref={inputRef}
-              id="element-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={mode === 'existing' && selectedExistingElement ? 'Enter a new name...' : 'Enter a name...'}
-              className="flex-1"
-              disabled={mode === 'existing' && !selectedExistingElement}
-            />
+                Add Existing
+              </Button>
+            )}
           </div>
+        </div>
 
-          <div className="flex gap-2 justify-end">
-            <Button type="submit" disabled={mode === 'existing' && !selectedExistingElement}>
+        {/* Lines 3-4: Form */}
+        <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingBottom: '40px' }}>
+          <form onSubmit={handleSubmit}>
+            {mode === 'existing' && existingElements.length > 0 && (
+              <div style={{ marginBottom: '40px' }}>
+                <div className="space-y-2">
+                  <Label htmlFor="existing-element" className="text-base font-semibold text-gray-800">
+                    Select Element
+                  </Label>
+                  <select
+                    id="existing-element"
+                    value={selectedExistingElement?.id || ''}
+                    onChange={(e) => {
+                      const element = existingElements.find(el => el.id === e.target.value);
+                      setSelectedExistingElement(element || null);
+                    }}
+                    className="w-full h-12 rounded-md border-2 border-gray-300 bg-white px-4 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  >
+                    <option value="">Choose an element...</option>
+                    {existingElements.map(element => (
+                      <option key={element.id} value={element.id}>
+                        {element.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {mode === 'existing' && existingElements.length === 0 && (
+              <div className="text-center text-gray-500 bg-gray-50 rounded-md text-base" style={{ paddingTop: '40px', paddingBottom: '40px', marginBottom: '40px' }}>
+                No existing {elementType.toLowerCase()} elements found
+              </div>
+            )}
+
+            {/* Line 3-4: Name Label and Input - Only show in Create mode OR when element selected in Existing mode */}
+            {(mode === 'create' || (mode === 'existing' && selectedExistingElement)) && (
+              <div className="space-y-2">
+                <Label htmlFor="element-name" className="text-base font-semibold text-gray-800">
+                  {mode === 'existing' && selectedExistingElement ? 'New Name' : 'Name'}
+                </Label>
+                <Input
+                  ref={inputRef}
+                  id="element-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={mode === 'existing' && selectedExistingElement ? 'Enter a new name...' : 'Enter a name...'}
+                  className="w-full h-12 px-4 text-base border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-colors"
+                />
+              </div>
+            )}
+          </form>
+        </div>
+
+        {/* Line 5: Footer */}
+        <div className="bg-gray-50 border-t border-gray-200 rounded-b-lg" style={{ paddingLeft: '48px', paddingRight: '48px', paddingTop: '32px', paddingBottom: '32px' }}>
+          <div className="flex gap-4 justify-end">
+            <Button
+              type="button"
+              onClick={onCancel}
+              variant="outline"
+              style={{ height: '48px', paddingLeft: '40px', paddingRight: '40px' }}
+              className="text-base font-semibold"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              onClick={handleSubmit}
+              disabled={mode === 'existing' && !selectedExistingElement}
+              style={{ height: '48px', paddingLeft: '40px', paddingRight: '40px' }}
+              className="text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+            >
               Done
             </Button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
