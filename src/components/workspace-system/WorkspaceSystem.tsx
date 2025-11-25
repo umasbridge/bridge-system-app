@@ -333,7 +333,7 @@ export function WorkspaceSystem() {
               <p className="text-gray-500 mb-4">No workspace open</p>
               <Button onClick={handleShowWorkspaceDialog} className="gap-2">
                 <Plus className="h-4 w-4" />
-                Create New Workspace
+                Create New System
               </Button>
             </div>
           </div>

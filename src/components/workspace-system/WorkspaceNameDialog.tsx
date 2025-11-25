@@ -130,7 +130,7 @@ export function WorkspaceNameDialog({ onConfirm, onCancel }: WorkspaceNameDialog
               Cancel
             </Button>
             <Button type="submit">
-              Create Workspace
+              Create System
             </Button>
           </div>
         </form>

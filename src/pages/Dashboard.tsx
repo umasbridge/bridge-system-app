@@ -159,7 +159,7 @@ export function Dashboard() {
             {/* Create new */}
             <Button onClick={handleCreateNew}>
               <Plus className="w-4 h-4" />
-              New Workspace
+              New System
             </Button>
 
             {/* Templates */}
@@ -241,7 +241,7 @@ export function Dashboard() {
             <div className="flex items-center justify-center gap-3">
               <Button onClick={handleCreateNew}>
                 <Plus className="w-4 h-4" />
-                Create Workspace
+                Create System
               </Button>
               <Button variant="outline" onClick={() => setIsTemplateModalOpen(true)}>
                 <FileText className="w-4 h-4" />
