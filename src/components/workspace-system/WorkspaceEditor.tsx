@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { X } from 'lucide-react';
 import { ResizableElement } from '../element-look-and-feel/ResizableElement';
 import { BaseElement } from '../element-look-and-feel/types';
 import { SystemsTable, RowData } from '../systems-table';
@@ -70,6 +71,8 @@ interface WorkspaceEditorProps {
   onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => void;
   hideControls?: boolean;
   initialElements?: WorkspaceElement[];
+  isViewMode?: boolean;
+  onSwitchToEditMode?: () => void;
 }
 
 const ELEMENT_SPACING = 20; // 20px spacing between elements (1 line spacing)
@@ -83,7 +86,9 @@ export function WorkspaceEditor({
   existingWorkspaces = [],
   onNavigateToWorkspace,
   hideControls = false,
-  initialElements = []
+  initialElements = [],
+  isViewMode = false,
+  onSwitchToEditMode
 }: WorkspaceEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [elements, setElements] = useState<WorkspaceElement[]>([]);
@@ -243,14 +248,33 @@ export function WorkspaceEditor({
       return { x: 20, y: 20 };
     }
 
-    // Find the element with the highest bottom edge
+    // Find the element with the highest bottom edge using actual DOM measurements
     let maxBottom = 0;
     let bottomElement: WorkspaceElement | null = null;
+
     elements.forEach(el => {
-      // Element height now includes name header height for SystemsTable elements
-      const bottom = el.position.y + el.size.height;
-      if (bottom > maxBottom) {
-        maxBottom = bottom;
+      // Try to get actual rendered height from DOM
+      const domElement = containerRef.current?.querySelector(`[data-element-id="${el.id}"]`);
+      let actualBottom: number;
+
+      if (domElement) {
+        // Use actual rendered height from DOM
+        const rect = domElement.getBoundingClientRect();
+        const containerRect = containerRef.current?.getBoundingClientRect();
+        if (containerRect) {
+          // Calculate bottom position relative to container
+          actualBottom = el.position.y + rect.height;
+        } else {
+          // Fallback to stored size
+          actualBottom = el.position.y + el.size.height;
+        }
+      } else {
+        // Fallback to stored size if DOM element not found
+        actualBottom = el.position.y + el.size.height;
+      }
+
+      if (actualBottom > maxBottom) {
+        maxBottom = actualBottom;
         bottomElement = el;
       }
     });
@@ -709,12 +733,18 @@ export function WorkspaceEditor({
   const handleContentSizeChange = (elementId: string, width: number, height: number) => {
     const currentElement = elements.find(el => el.id === elementId);
     const heightChanged = currentElement && currentElement.size.height !== height;
+    const sizeChanged = currentElement && (currentElement.size.height !== height || currentElement.size.width !== width);
 
     const updatedElements = elements.map(el =>
       el.id === elementId
         ? { ...el, size: { width, height } }
         : el
     );
+
+    // Update size in DB if it changed
+    if (sizeChanged && currentElement) {
+      elementOperations.update(elementId, { size: { width, height } });
+    }
 
     // If height changed and element is not manually positioned, recalculate all auto-layout positions
     if (heightChanged && currentElement && currentElement.isManuallyPositioned !== true) {
@@ -839,15 +869,27 @@ export function WorkspaceEditor({
     <div className="w-full h-full flex flex-col relative">
       {/* Title Bar */}
       {!hideControls && (
-        <div className="bg-white border-b border-gray-200 px-8 py-3 flex-shrink-0">
+        <div className="bg-white border-b border-gray-200 px-8 py-3 flex-shrink-0 flex items-center gap-3">
           <Input
             type="text"
             value={title}
             onChange={(e) => handleTitleChange(e.target.value)}
-            className="text-lg font-semibold"
+            className="text-lg font-semibold flex-1"
             placeholder="Enter workspace name..."
-            autoFocus
+            autoFocus={!isViewMode}
+            readOnly={isViewMode}
+            disabled={isViewMode}
           />
+          {onSaveAndClose && (
+            <Button
+              onClick={onSaveAndClose}
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       )}
 
@@ -890,7 +932,7 @@ export function WorkspaceEditor({
           }}
           onClick={(e) => {
             e.stopPropagation();
-            if (e.target === e.currentTarget) {
+            if (e.target === e.currentTarget && !isViewMode) {
               // Check if click is on the border (use 8px click area for easier targeting)
               const rect = e.currentTarget.getBoundingClientRect();
               const clickX = e.clientX - rect.left;
@@ -937,7 +979,7 @@ export function WorkspaceEditor({
                 showDeleteButton={false}
                 minHeight={50}
                 actions={{
-                  onSelect: () => {
+                  onSelect: isViewMode ? undefined : () => {
                     if (selectedId === element.id && formatPanelId === element.id) {
                       // If already selected with panel open, clicking again should deselect
                       setSelectedId(null);
@@ -956,12 +998,13 @@ export function WorkspaceEditor({
                       setWorkspaceSelected(false); // Deselect workspace
                     }
                   },
-                  onUpdate: (updates) => handleUpdate(element.id, updates),
-                  onDelete: () => handleDelete(element.id),
-                  onInteractionStart: () => setIsInteracting(true),
-                  onInteractionEnd: () => setIsInteracting(false)
+                  onUpdate: isViewMode ? undefined : (updates) => handleUpdate(element.id, updates),
+                  onDelete: isViewMode ? undefined : () => handleDelete(element.id),
+                  onInteractionStart: isViewMode ? undefined : () => setIsInteracting(true),
+                  onInteractionEnd: isViewMode ? undefined : () => setIsInteracting(false)
                 }}
                 data-table-element
+                data-element-id={element.id}
               >
                 <div
                   className="inline-block"
@@ -1020,6 +1063,7 @@ export function WorkspaceEditor({
                     }}
                     workspaceId={workspaceId}
                     elementId={element.id}
+                    isViewMode={isViewMode}
                   />
                 </div>
               </ResizableElement>
@@ -1037,7 +1081,7 @@ export function WorkspaceEditor({
                 element={textElement}
                 isSelected={isElementSelected}
                 containerRef={containerRef}
-                onSelect={() => {
+                onSelect={isViewMode ? undefined : () => {
                   // Explicitly blur all contentEditable elements to remove cursor
                   const contentEditables = document.querySelectorAll('[contenteditable="true"]');
                   contentEditables.forEach(el => {
@@ -1049,11 +1093,11 @@ export function WorkspaceEditor({
                   setFocusedTextElementId(null); // Clear edit mode when selecting element
                   setWorkspaceSelected(false); // Deselect workspace
                 }}
-                onUpdate={(updates) => handleUpdate(element.id, updates)}
-                onDelete={() => handleDelete(element.id)}
+                onUpdate={isViewMode ? undefined : (updates) => handleUpdate(element.id, updates)}
+                onDelete={isViewMode ? undefined : () => handleDelete(element.id)}
                 existingWorkspaces={existingWorkspaces}
                 onNavigateToWorkspace={onNavigateToWorkspace}
-                onFocusChange={(isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
+                onFocusChange={isViewMode ? undefined : (isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
                   if (isFocused) {
                     // Entering edit mode - clear selection
                     setSelectedId(null);
@@ -1074,6 +1118,7 @@ export function WorkspaceEditor({
                     setTextElementSelectedText('');
                   }
                 }}
+                readOnly={isViewMode}
               />
             );
           }
@@ -1087,7 +1132,7 @@ export function WorkspaceEditor({
                 isSelected={selectedId === element.id}
                 containerRef={containerRef}
                 actions={{
-                  onSelect: () => {
+                  onSelect: isViewMode ? undefined : () => {
                     // Explicitly blur all contentEditable elements to remove cursor
                     const contentEditables = document.querySelectorAll('[contenteditable="true"]');
                     contentEditables.forEach(el => {
@@ -1100,11 +1145,12 @@ export function WorkspaceEditor({
                     setFocusedCellId(null); // Clear any cell edit mode
                     setWorkspaceSelected(false); // Deselect workspace
                   },
-                  onUpdate: (updates) => handleUpdate(element.id, updates),
-                  onDelete: () => handleDelete(element.id),
-                  onInteractionStart: () => setIsInteracting(true),
-                  onInteractionEnd: () => setIsInteracting(false)
+                  onUpdate: isViewMode ? undefined : (updates) => handleUpdate(element.id, updates),
+                  onDelete: isViewMode ? undefined : () => handleDelete(element.id),
+                  onInteractionStart: isViewMode ? undefined : () => setIsInteracting(true),
+                  onInteractionEnd: isViewMode ? undefined : () => setIsInteracting(false)
                 }}
+                data-element-id={element.id}
               >
                 <img
                   src={imageElement.src}
@@ -1129,7 +1175,8 @@ export function WorkspaceEditor({
                 isSelected={selectedId === element.id}
                 containerRef={containerRef}
                 data-pdf-element
-                onSelect={() => {
+                data-element-id={element.id}
+                onSelect={isViewMode ? undefined : () => {
                   if (selectedId === element.id && formatPanelId === element.id) {
                     // If already selected with panel open, clicking again should deselect
                     setSelectedId(null);
@@ -1149,10 +1196,10 @@ export function WorkspaceEditor({
                     setWorkspaceSelected(false); // Deselect workspace
                   }
                 }}
-                onUpdate={(updates) => handleUpdate(element.id, updates)}
-                onDelete={() => handleDelete(element.id)}
-                onInteractionStart={() => setIsInteracting(true)}
-                onInteractionEnd={() => setIsInteracting(false)}
+                onUpdate={isViewMode ? undefined : (updates) => handleUpdate(element.id, updates)}
+                onDelete={isViewMode ? undefined : () => handleDelete(element.id)}
+                onInteractionStart={isViewMode ? undefined : () => setIsInteracting(true)}
+                onInteractionEnd={isViewMode ? undefined : () => setIsInteracting(false)}
               />
             );
           }
@@ -1166,15 +1213,16 @@ export function WorkspaceEditor({
                 isSelected={selectedId === element.id}
                 containerRef={containerRef}
                 actions={{
-                  onSelect: () => {
+                  onSelect: isViewMode ? undefined : () => {
                     setSelectedId(element.id);
                     setWorkspaceSelected(false);
                   },
-                  onUpdate: (updates) => handleUpdate(element.id, updates),
-                  onDelete: () => handleDelete(element.id),
-                  onInteractionStart: () => setIsInteracting(true),
-                  onInteractionEnd: () => setIsInteracting(false)
+                  onUpdate: isViewMode ? undefined : (updates) => handleUpdate(element.id, updates),
+                  onDelete: isViewMode ? undefined : () => handleDelete(element.id),
+                  onInteractionStart: isViewMode ? undefined : () => setIsInteracting(true),
+                  onInteractionEnd: isViewMode ? undefined : () => setIsInteracting(false)
                 }}
+                data-element-id={element.id}
               >
                 <div 
                   className="w-full h-full p-4 bg-white flex items-center gap-3"
@@ -1340,22 +1388,32 @@ export function WorkspaceEditor({
       {!hideControls && (
         <div className="bg-white border-t border-gray-200 px-8 py-4 flex-shrink-0 sticky bottom-0">
           <div className="flex gap-2 justify-between items-center">
-            <div className="flex gap-4">
-              <Button onClick={handleInsertSystemsTable} variant="outline">
-                Insert Systems Table
-              </Button>
-              <Button onClick={handleInsertText} variant="outline">
-                Insert Text
-              </Button>
-              <Button onClick={handleUploadFile} variant="outline">
-                Upload PDF
-              </Button>
-            </div>
+            {/* Insert buttons - only show in edit mode */}
+            {!isViewMode && (
+              <div className="flex gap-4">
+                <Button onClick={handleInsertSystemsTable} variant="outline">
+                  Insert Systems Table
+                </Button>
+                <Button onClick={handleInsertText} variant="outline">
+                  Insert Text
+                </Button>
+                <Button onClick={handleUploadFile} variant="outline">
+                  Upload PDF
+                </Button>
+              </div>
+            )}
+            {isViewMode && <div />}
+
             <div className="flex gap-2">
               <Button onClick={() => setShowShareDialog(true)} variant="outline" disabled={!title.trim()}>
                 Share
               </Button>
-              {onSaveAndClose && (
+              {isViewMode && onSwitchToEditMode && (
+                <Button onClick={onSwitchToEditMode} variant="default">
+                  Edit
+                </Button>
+              )}
+              {!isViewMode && onSaveAndClose && (
                 <Button onClick={onSaveAndClose} variant="default" disabled={!title.trim()}>
                   Save and Close
                 </Button>

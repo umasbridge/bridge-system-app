@@ -136,6 +136,7 @@ export function WorkspaceSystem() {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [showWorkspaceNameDialog, setShowWorkspaceNameDialog] = useState(false);
   const [isViewMode, setIsViewMode] = useState(false);
+  const [navigationHistory, setNavigationHistory] = useState<string[]>([]); // Track which workspace we came from
 
   // Load workspaces from DB and handle URL-based workspace loading
   useEffect(() => {
@@ -199,6 +200,10 @@ export function WorkspaceSystem() {
     } else {
       // For new-page, navigate to the workspace tab
       if (existingWorkspace) {
+        // Push current workspace to history before navigating
+        if (activeWorkspaceId) {
+          setNavigationHistory(prev => [...prev, activeWorkspaceId]);
+        }
         setActiveWorkspaceId(existingWorkspace.id);
         setSplitViewWorkspaceId(null); // Close split view when switching tabs
       }
@@ -262,17 +267,33 @@ export function WorkspaceSystem() {
   };
 
   const handleCloseWorkspace = async (workspaceId: string) => {
-    await workspaceOperations.delete(workspaceId);
-    setWorkspaces(workspaces.filter(ws => ws.id !== workspaceId));
-    if (activeWorkspaceId === workspaceId) {
-      const remainingWorkspaces = workspaces.filter(ws => ws.id !== workspaceId);
-      setActiveWorkspaceId(remainingWorkspaces.length > 0 ? remainingWorkspaces[0].id : null);
+    // Check if we have navigation history - if so, go back instead of deleting
+    if (navigationHistory.length > 0 && activeWorkspaceId === workspaceId) {
+      // Pop the last workspace from history and navigate back to it
+      const previousWorkspaceId = navigationHistory[navigationHistory.length - 1];
+      setNavigationHistory(prev => prev.slice(0, -1));
+      setActiveWorkspaceId(previousWorkspaceId);
+    } else {
+      // No history, so delete the workspace (this is the original behavior)
+      await workspaceOperations.delete(workspaceId);
+      setWorkspaces(workspaces.filter(ws => ws.id !== workspaceId));
+      if (activeWorkspaceId === workspaceId) {
+        const remainingWorkspaces = workspaces.filter(ws => ws.id !== workspaceId);
+        setActiveWorkspaceId(remainingWorkspaces.length > 0 ? remainingWorkspaces[0].id : null);
+      }
     }
   };
 
   const handleSaveAndClose = () => {
-    // Navigate back to dashboard
-    navigate('/dashboard');
+    // Check if we have navigation history - if so, go back to previous workspace
+    if (navigationHistory.length > 0) {
+      const previousWorkspaceId = navigationHistory[navigationHistory.length - 1];
+      setNavigationHistory(prev => prev.slice(0, -1));
+      setActiveWorkspaceId(previousWorkspaceId);
+    } else {
+      // No history, navigate back to dashboard
+      navigate('/dashboard');
+    }
   };
 
   const handleSwitchToEditMode = () => {

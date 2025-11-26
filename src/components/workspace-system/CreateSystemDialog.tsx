@@ -11,7 +11,7 @@ interface CreateSystemDialogProps {
 }
 
 export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromTemplate }: CreateSystemDialogProps) {
-  const [mode, setMode] = useState<'select' | 'scratch' | 'template'>('select');
+  const [mode, setMode] = useState<'select' | 'template'>('select');
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [newName, setNewName] = useState('');
@@ -60,7 +60,7 @@ export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromT
           <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingBottom: '40px' }}>
             <div className="flex flex-col gap-4">
               <Button
-                onClick={() => setMode('scratch')}
+                onClick={onCreateFromScratch}
                 className="h-16 text-base font-semibold"
                 variant="outline"
               >
@@ -120,7 +120,7 @@ export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromT
         {/* Footer */}
         <div className="bg-gray-50 border-t border-gray-200 rounded-b-lg" style={{ paddingLeft: '48px', paddingRight: '48px', paddingTop: '32px', paddingBottom: '32px' }}>
           <div className="flex gap-4 justify-end">
-            {mode !== 'select' && (
+            {mode === 'template' && (
               <Button
                 type="button"
                 onClick={() => setMode('select')}
@@ -140,16 +140,6 @@ export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromT
             >
               Cancel
             </Button>
-            {mode === 'scratch' && (
-              <Button
-                type="button"
-                onClick={onCreateFromScratch}
-                style={{ height: '48px', paddingLeft: '40px', paddingRight: '40px' }}
-                className="text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                Create
-              </Button>
-            )}
             {mode === 'template' && (
               <Button
                 type="button"

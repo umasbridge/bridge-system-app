@@ -403,6 +403,7 @@ export function SystemsTable({
             onDelete={deleteName}
             meaningWidth={meaningWidth}
             gridlines={gridlines}
+            isViewMode={isViewMode}
           />
         )}
 

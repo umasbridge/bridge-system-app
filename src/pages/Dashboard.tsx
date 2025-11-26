@@ -57,7 +57,6 @@ export function Dashboard() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
             <img src={logoImg} alt="Bridge System App" className="h-10" />
-            <h1 className="text-xl font-semibold text-neutral-900">Bridge System</h1>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-neutral-600">Welcome, {user?.name}</span>
@@ -70,27 +69,35 @@ export function Dashboard() {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-neutral-900 mb-8">Welcome to Bridge System</h2>
-          <div className="flex flex-col gap-6 items-center">
-            <Button
-              onClick={() => setShowCreateDialog(true)}
-              size="lg"
-              className="w-80 h-20 text-lg font-semibold gap-3"
-            >
-              <FilePlus className="w-6 h-6" />
-              Create New System
-            </Button>
-            <Button
-              onClick={() => setShowOpenDialog(true)}
-              size="lg"
-              variant="outline"
-              className="w-80 h-20 text-lg font-semibold gap-3"
-            >
-              <FolderOpen className="w-6 h-6" />
-              Open Existing System
-            </Button>
+      <main className="flex-1 flex flex-col items-center justify-center">
+        <h1
+          className="font-bold mb-12 tracking-tight"
+          style={{
+            fontSize: '7rem',
+            background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+            letterSpacing: '0.02em'
+          }}
+        >
+          BRIDGE SYSTEM
+        </h1>
+        <div className="flex items-center" style={{ gap: '480px', marginTop: '384px' }}>
+          <div
+            onClick={() => setShowCreateDialog(true)}
+            className="w-64 h-64 bg-blue-600 hover:bg-blue-700 rounded-lg flex flex-col items-center justify-center gap-4 cursor-pointer transition-colors shadow-lg"
+          >
+            <FilePlus className="w-16 h-16 text-white" />
+            <span className="text-white text-xl font-semibold text-center px-4">Create New System</span>
+          </div>
+          <div
+            onClick={() => setShowOpenDialog(true)}
+            className="w-64 h-64 bg-blue-600 hover:bg-blue-700 rounded-lg flex flex-col items-center justify-center gap-4 cursor-pointer transition-colors shadow-lg"
+          >
+            <FolderOpen className="w-16 h-16 text-white" />
+            <span className="text-white text-xl font-semibold text-center px-4">Open Existing System</span>
           </div>
         </div>
 

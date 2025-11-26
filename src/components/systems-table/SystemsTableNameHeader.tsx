@@ -15,6 +15,7 @@ interface SystemsTableNameHeaderProps {
   onDelete: () => void;
   meaningWidth: number;
   gridlines?: GridlineOptions;
+  isViewMode?: boolean;
 }
 
 export function SystemsTableNameHeader({
@@ -22,7 +23,8 @@ export function SystemsTableNameHeader({
   onUpdate,
   onDelete,
   meaningWidth,
-  gridlines
+  gridlines,
+  isViewMode
 }: SystemsTableNameHeaderProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -53,11 +55,12 @@ export function SystemsTableNameHeader({
           placeholder="Table name"
           minHeight={20}
           columnWidth={meaningWidth}
+          readOnly={isViewMode}
         />
       </div>
 
-      {/* Delete Button - Shows on hover */}
-      {isHovered && (
+      {/* Delete Button - Shows on hover (hidden in view mode) */}
+      {isHovered && !isViewMode && (
         <button
           onClick={(e) => {
             e.stopPropagation();
