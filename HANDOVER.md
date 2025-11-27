@@ -1,69 +1,72 @@
-# Bridge System App - Session Handover
+# Supabase Migration Handover
 
-## Session Metadata
-- Date: 2025-11-24 07:58 IST
-- Duration: ~1.5 hours
-- Thread Context: 110K tokens
-- Branch: master
+## Context
+Bridge System App - migrating from IndexedDB (Dexie) to Supabase for cloud persistence and auth.
 
-## Current Status
-All blocker bugs FIXED. SystemsTable auto-sizes. PDF drag works vertically. Font formatting bugs resolved. Ready for Phase 2.
+## What's Done
+1. **Supabase client setup** - `src/lib/supabase.ts` with env vars in `.env`
+2. **Auth integration complete** - Login, Signup, ProtectedRoute all use Supabase auth
+3. **Database API layer ready** - `src/lib/supabase-db.ts` has same interface as IndexedDB (`workspaceOperations`, `elementOperations`)
+4. **SQL schema created** - `supabase/migrations/001_initial_schema.sql` (needs to be run in Supabase dashboard)
 
-## Exact Position
-- ✅ Phase 1: Image storage COMPLETE (all features working)
-- ✅ Image manipulation: Selection, resize, delete (RichTextCell + TextElement)
-- ✅ PDF upload: Fixed worker version mismatch, PDF-only filter
-- ✅ Auto-layout: Smart flow around manually positioned elements
-- ✅ SystemsTable auto-size: Dynamic height calculation (1 row = 100px)
-- ✅ PDF vertical drag: Interaction state pattern prevents auto-layout interference
-- ✅ Font formatting: Color + accumulation bugs fixed in TextElement + RichTextCell
-- ✅ Upload buttons removed: Streamlined to copy/paste and drag-drop only
-- ⏭️ Next: Phase 2 (colleague builds workspaces using UI)
+## Credentials Location
+`.env` file contains:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- Account login credentials (for reference only)
 
-## Critical Context
+## What Needs To Be Done
 
-1. **Interaction State Pattern**: Auto-layout pauses during drag/resize operations using `isInteracting` boolean state. Prevents auto-layout from repositioning elements mid-drag. Applied to all ResizableElement instances (SystemsTable, PDF, images).
+### Step 1: Run SQL Migration (USER ACTION REQUIRED)
+Go to Supabase Dashboard → SQL Editor → Run contents of `supabase/migrations/001_initial_schema.sql`
 
-2. **SystemsTable Auto-Size Formula**: `Math.max(100, initialRowCount * 80 + 20)`. 1 row = 100px (was 200px), reducing whitespace for small tables.
+### Step 2: Update Components to Use Supabase DB
+Replace imports from `src/db/database.ts` with `src/lib/supabase-db.ts`:
 
-3. **TextFormatPanel Format Isolation**: `handleFormatChange` sends only changed properties (`onApply(newFormat)`), not accumulated state. Prevents unwanted inheritance of previous formatting choices across selections.
+Files that need updating:
+- `src/components/workspace-system/WorkspaceSystem.tsx`
+- `src/components/workspace-system/WorkspaceEditor.tsx`
+- `src/pages/Dashboard.tsx`
+- Any other files importing from `../db/database` or `../../db/database`
 
-4. **TextAlign vs Inline Formatting**: TextAlign skipped when inline formatting present (`!hasInlineFormatting`). Ensures color/bold/size take precedence over block-level alignment. Same fix applied to TextElement and RichTextCell.
+The API is identical:
+```typescript
+// OLD
+import { workspaceOperations, elementOperations } from '../db/database';
 
-5. **Upload Removal**: User prefers streamlined UI - removed upload buttons from TextElement and RichTextCell. Only copy/paste and drag-drop remain for image insertion.
+// NEW
+import { workspaceOperations, elementOperations } from '../lib/supabase-db';
+```
 
-## Decisions Made
+### Step 3: Test
+- Create account via signup
+- Create workspace
+- Add elements (tables, text, PDF)
+- Verify data persists across page refreshes
 
-- **Decision:** Dynamic height calculation for SystemsTable
-  **Rationale:** Fixed 200px height wasteful for 1-row tables. Formula `Math.max(100, initialRowCount * 80 + 20)` sizes container to content. Reduces whitespace, improves visual density.
+## Key Files Reference
+- `src/lib/supabase.ts` - Supabase client
+- `src/lib/supabase-db.ts` - Database operations (replaces IndexedDB)
+- `src/lib/supabase-types.ts` - TypeScript types
+- `src/lib/auth-context.tsx` - Auth state management
+- `src/db/database.ts` - OLD IndexedDB (to be deprecated)
+- `supabase/migrations/001_initial_schema.sql` - Database schema
 
-- **Decision:** Interaction state pattern to pause auto-layout
-  **Rationale:** Auto-layout useEffect ran during drag operations, repositioning element mid-drag. Adding `isInteracting` boolean state pauses auto-layout during user interactions. Applied uniformly to all ResizableElement instances.
+## Prompt for Next Thread
 
-- **Decision:** TextFormatPanel sends only changed properties
-  **Rationale:** Accumulated state caused unwanted format inheritance (changing font size also applied previous color choice). Sending only `newFormat` vs `updatedFormat` isolates changes. User expects independent formatting operations.
+```
+Continue Supabase migration for bridge-system-app.
 
-- **Decision:** Remove upload buttons from TextElement and RichTextCell
-  **Rationale:** User feedback: "remove the upload icon for uploading images in TextElement or RTCs (I am happy with Copy Paste and drag-drop)". Streamlines UI, reduces interaction patterns to maintain.
+Previous work completed:
+- Supabase client, auth context, and API layer created
+- Login/Signup pages updated to use Supabase auth
+- SQL schema ready in supabase/migrations/001_initial_schema.sql
 
-## Blockers
+Next steps:
+1. Confirm SQL migration has been run in Supabase dashboard
+2. Update all components to import from src/lib/supabase-db.ts instead of src/db/database.ts
+3. Test the full flow: signup → create workspace → add elements → verify persistence
+4. Delete old IndexedDB code (src/db/database.ts) once migration is verified
 
-None. All previous blockers resolved this session.
-
-## Files Modified This Session
-
-- `src/components/workspace-system/WorkspaceEditor.tsx` - SystemsTable auto-size calculation (line 157-160), interaction state tracking (line 80), auto-layout pause during interactions (line 371), callbacks for all ResizableElements (lines 472-473, 577-578, 606-607, 622-623)
-- `src/components/workspace-system/PdfElement.tsx` - Extended interface and props with onInteractionStart/End callbacks (lines 20-21, 31-32, 59-60)
-- `src/components/workspace-system/TextElement.tsx` - Font color bug fix with `!hasInlineFormatting` check (line 777), removed upload button and handlers
-- `src/components/systems-table/RichTextCell.tsx` - Removed upload button and handlers
-- `src/components/workspace-system/TextFormatPanel.tsx` - Format accumulation fix: `onApply(newFormat)` instead of `onApply(updatedFormat)` (line 76)
-
-## Technical Debt
-
-- Auto-layout runs on every element change (performance concern for large workspaces)
-- No loading indicator during PDF processing (multi-page PDFs take time)
-- TextFormatPanel sends entire format object with defaults (textAlign:'left' always included)
-
-## Handover Prompt
-
-"Bridge System App on master: All Phase 1 blockers FIXED. SystemsTable auto-sizes (1 row = 100px). PDF drag works vertically (interaction state pattern). Font formatting bugs resolved (color + accumulation). Upload buttons removed per user preference. Ready for Phase 2 (colleague builds sample workspaces). Dev: http://localhost:3002/. See HANDOVER.md for complete session details."
+See HANDOVER.md for full context.
+```
