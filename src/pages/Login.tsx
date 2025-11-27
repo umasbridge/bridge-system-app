@@ -1,11 +1,12 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import { auth } from '../lib/mockAuth';
+import { useAuth } from '../lib/auth-context';
 import logoImage from '../assets/logo.png';
 
 export function Login() {
   const navigate = useNavigate();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -18,12 +19,12 @@ export function Login() {
     setError('');
     setIsLoading(true);
 
-    const result = await auth.login(email, password);
+    const { error: authError } = await signIn(email, password);
 
-    if (result.success) {
+    if (!authError) {
       navigate('/dashboard');
     } else {
-      setError(result.error || 'Login failed');
+      setError(authError.message || 'Login failed');
     }
 
     setIsLoading(false);

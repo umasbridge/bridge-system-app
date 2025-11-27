@@ -1,10 +1,11 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import { auth } from '../lib/mockAuth';
+import { useAuth } from '../lib/auth-context';
 
 export function Signup() {
   const navigate = useNavigate();
+  const { signUp } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -12,25 +13,37 @@ export function Signup() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    setMessage('');
 
     if (!acceptTerms) {
       setError('You must accept the Terms of Service and Privacy Policy');
       return;
     }
 
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
     setIsLoading(true);
 
-    const result = await auth.signup(email, password, confirmPassword);
+    const { error: authError } = await signUp(email, password);
 
-    if (result.success) {
-      navigate('/dashboard');
+    if (!authError) {
+      setMessage('Check your email for the confirmation link!');
     } else {
-      setError(result.error || 'Signup failed');
+      setError(authError.message || 'Signup failed');
     }
 
     setIsLoading(false);
@@ -110,6 +123,15 @@ export function Signup() {
                 role="alert"
               >
                 {error}
+              </div>
+            )}
+
+            {message && (
+              <div
+                className="p-3 rounded bg-green-50 border border-green-200 text-green-700 text-sm"
+                role="status"
+              >
+                {message}
               </div>
             )}
 
