@@ -30,6 +30,8 @@ export type {
 export interface Workspace {
   id: string;
   title: string;
+  titleHtmlContent?: string;
+  titleTextAlign?: string;
   createdAt: number;
   updatedAt: number;
   borderColor?: string;
@@ -66,6 +68,7 @@ export interface SystemsTableElement extends BaseElement {
   levelWidths?: { [level: number]: number };
   meaningWidth?: number;
   showName?: boolean;
+  nameHtmlContent?: string;
 }
 
 export interface TextElement extends BaseElement {
@@ -118,6 +121,8 @@ function workspaceFromRow(row: WorkspaceRow): Workspace {
   return {
     id: row.id,
     title: row.title,
+    titleHtmlContent: row.title_html_content || undefined,
+    titleTextAlign: row.title_text_align || undefined,
     createdAt: new Date(row.created_at).getTime(),
     updatedAt: new Date(row.updated_at).getTime(),
     borderColor: row.border_color || undefined,
@@ -157,6 +162,7 @@ function elementFromRow(row: ElementRow): WorkspaceElement {
         levelWidths: stData.levelWidths,
         meaningWidth: stData.meaningWidth,
         showName: stData.showName,
+        nameHtmlContent: stData.nameHtmlContent,
       } as SystemsTableElement;
     }
     case 'text': {
@@ -216,6 +222,7 @@ function elementToInsert(element: WorkspaceElement, userId: string): ElementInse
         levelWidths: st.levelWidths,
         meaningWidth: st.meaningWidth,
         showName: st.showName,
+        nameHtmlContent: st.nameHtmlContent,
       };
       break;
     }
@@ -339,6 +346,8 @@ export const workspaceOperations = {
     const dbUpdates: WorkspaceUpdate = {};
 
     if (updates.title !== undefined) dbUpdates.title = updates.title;
+    if (updates.titleHtmlContent !== undefined) dbUpdates.title_html_content = updates.titleHtmlContent;
+    if (updates.titleTextAlign !== undefined) dbUpdates.title_text_align = updates.titleTextAlign;
     if (updates.borderColor !== undefined) dbUpdates.border_color = updates.borderColor;
     if (updates.borderWidth !== undefined) dbUpdates.border_width = updates.borderWidth;
     if (updates.backgroundColor !== undefined) dbUpdates.background_color = updates.backgroundColor;
@@ -422,6 +431,7 @@ export const elementOperations = {
     if ('levelWidths' in updates) dataUpdates.levelWidths = updates.levelWidths;
     if ('meaningWidth' in updates) dataUpdates.meaningWidth = updates.meaningWidth;
     if ('showName' in updates) dataUpdates.showName = updates.showName;
+    if ('nameHtmlContent' in updates) dataUpdates.nameHtmlContent = updates.nameHtmlContent;
 
     // Text fields
     if ('content' in updates) dataUpdates.content = updates.content;

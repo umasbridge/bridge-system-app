@@ -273,12 +273,18 @@ export function WorkspaceEditor({
       return;
     }
 
-    // Extract plain text for the title
+    // Extract plain text and HTML content for the title
     if (workspaceNameRef.current) {
       const plainText = workspaceNameRef.current.textContent || '';
+      const htmlContent = workspaceNameRef.current.innerHTML || '';
+
+      // Save both plain text title and HTML content
       if (plainText !== title) {
         handleTitleChange(plainText);
       }
+
+      // Always save HTML content to preserve formatting
+      workspaceOperations.update(workspaceId, { titleHtmlContent: htmlContent });
     }
 
     setFocusedWorkspaceName(false);
@@ -305,6 +311,24 @@ export function WorkspaceEditor({
 
     // Focus the contenteditable
     workspaceNameRef.current.focus();
+
+    // Handle text alignment - applies to the entire workspace name container
+    if (format.textAlign) {
+      workspaceNameRef.current.style.textAlign = format.textAlign;
+      // Save alignment to database
+      workspaceOperations.update(workspaceId, { titleTextAlign: format.textAlign });
+
+      // Check if we have other formatting to apply
+      const hasOtherFormatting = format.color || format.backgroundColor || format.fontFamily ||
+                                  format.fontSize || format.bold || format.italic ||
+                                  format.underline || format.strikethrough;
+
+      // If only alignment, we're done
+      if (!hasOtherFormatting) {
+        return;
+      }
+      // Otherwise, continue to apply other formatting below
+    }
 
     // Try to restore saved selection or get current selection
     let workingRange: Range | null = workspaceNameSavedSelectionRef.current;
@@ -443,6 +467,12 @@ export function WorkspaceEditor({
 
       // Clear saved selection
       workspaceNameSavedSelectionRef.current = null;
+
+      // Save HTML content to database after formatting
+      if (workspaceNameRef.current) {
+        const htmlContent = workspaceNameRef.current.innerHTML || '';
+        workspaceOperations.update(workspaceId, { titleHtmlContent: htmlContent });
+      }
     } catch (error) {
       console.error('Error applying format to workspace name:', error);
     }
@@ -453,16 +483,24 @@ export function WorkspaceEditor({
     workspaceNameApplyFormatRef.current = applyWorkspaceNameFormat;
   }, []);
 
-  // Initialize workspace name contentEditable with title
+  // Initialize workspace name contentEditable with title (including HTML formatting and alignment)
   useEffect(() => {
     if (workspaceNameRef.current && !focusedWorkspaceName) {
-      // Only update if content is different to avoid cursor issues
-      const currentContent = workspaceNameRef.current.textContent || '';
-      if (currentContent !== title) {
-        workspaceNameRef.current.textContent = title;
+      // Load HTML content if available, otherwise use plain text title
+      if (workspace?.titleHtmlContent) {
+        workspaceNameRef.current.innerHTML = workspace.titleHtmlContent;
+      } else {
+        const currentContent = workspaceNameRef.current.textContent || '';
+        if (currentContent !== title) {
+          workspaceNameRef.current.textContent = title;
+        }
+      }
+      // Apply saved text alignment
+      if (workspace?.titleTextAlign) {
+        workspaceNameRef.current.style.textAlign = workspace.titleTextAlign;
       }
     }
-  }, [title, focusedWorkspaceName]);
+  }, [title, focusedWorkspaceName, workspace?.titleHtmlContent, workspace?.titleTextAlign]);
 
   const handleWorkspaceUpdate = async (updates: Partial<Workspace>) => {
     if (workspace) {
@@ -1270,6 +1308,7 @@ export function WorkspaceEditor({
                     initialLevelWidths={tableElement.levelWidths}
                     initialMeaningWidth={tableElement.meaningWidth}
                     initialName={element.name}
+                    initialNameHtmlContent={tableElement.nameHtmlContent}
                     initialShowName={tableElement.showName ?? true}
                     onRowsChange={(rows) => handleRowsChange(element.id, rows)}
                     onLevelWidthsChange={(levelWidths) => {
@@ -1283,6 +1322,9 @@ export function WorkspaceEditor({
                     }}
                     onShowNameChange={(showName) => {
                       elementOperations.update(element.id, { showName } as Partial<DBWorkspaceElement>);
+                    }}
+                    onNameHtmlContentChange={(nameHtmlContent) => {
+                      elementOperations.update(element.id, { nameHtmlContent } as Partial<DBWorkspaceElement>);
                     }}
                     onCellFocusChange={(rowId, column, isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
                       if (isFocused) {

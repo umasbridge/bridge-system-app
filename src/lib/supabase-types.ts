@@ -9,6 +9,8 @@ export interface Database {
           id: string;
           user_id: string;
           title: string;
+          title_html_content: string | null;
+          title_text_align: string | null;
           created_at: string;
           updated_at: string;
           border_color: string | null;
@@ -22,6 +24,8 @@ export interface Database {
           id?: string;
           user_id: string;
           title: string;
+          title_html_content?: string | null;
+          title_text_align?: string | null;
           created_at?: string;
           updated_at?: string;
           border_color?: string | null;
@@ -35,6 +39,8 @@ export interface Database {
           id?: string;
           user_id?: string;
           title?: string;
+          title_html_content?: string | null;
+          title_text_align?: string | null;
           created_at?: string;
           updated_at?: string;
           border_color?: string | null;
@@ -130,6 +136,7 @@ export interface SystemsTableData {
   levelWidths?: { [level: number]: number };
   meaningWidth?: number;
   showName?: boolean;
+  nameHtmlContent?: string;
 }
 
 export interface TextData {

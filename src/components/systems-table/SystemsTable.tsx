@@ -27,11 +27,13 @@ interface SystemsTableProps {
   initialLevelWidths?: { [level: number]: number };
   initialMeaningWidth?: number;
   initialName?: string;
+  initialNameHtmlContent?: string;
   initialShowName?: boolean;
   onRowsChange?: (rows: RowData[]) => void;
   onLevelWidthsChange?: (levelWidths: { [level: number]: number }) => void;
   onMeaningWidthChange?: (meaningWidth: number) => void;
   onNameChange?: (name: string) => void;
+  onNameHtmlContentChange?: (htmlContent: string) => void;
   onShowNameChange?: (showName: boolean) => void;
   onCellFocusChange?: (
     rowId: string,
@@ -67,11 +69,13 @@ export function SystemsTable({
   initialLevelWidths,
   initialMeaningWidth,
   initialName,
+  initialNameHtmlContent,
   initialShowName = true,
   onRowsChange,
   onLevelWidthsChange,
   onMeaningWidthChange,
   onNameChange,
+  onNameHtmlContentChange,
   onShowNameChange,
   onCellFocusChange,
   workspaceId,
@@ -105,6 +109,7 @@ export function SystemsTable({
 
   const [meaningWidth, setMeaningWidth] = useState<number>(initialMeaningWidth || 680); // Total table width (80 + 600)
   const [name, setName] = useState<string>(initialName || '');
+  const [nameHtmlContent, setNameHtmlContent] = useState<string | undefined>(initialNameHtmlContent);
   const [showName, setShowName] = useState<boolean>(initialShowName);
 
   const generateId = () => Math.random().toString(36).substring(7);
@@ -189,9 +194,13 @@ export function SystemsTable({
     onMeaningWidthChange?.(width);
   };
 
-  const updateName = (newName: string) => {
+  const updateName = (newName: string, newHtmlContent?: string) => {
     setName(newName);
     onNameChange?.(newName);
+    if (newHtmlContent !== undefined) {
+      setNameHtmlContent(newHtmlContent);
+      onNameHtmlContentChange?.(newHtmlContent);
+    }
   };
 
   const deleteName = () => {
@@ -400,11 +409,19 @@ export function SystemsTable({
         {name && showName && (
           <SystemsTableNameHeader
             name={name}
+            htmlContent={nameHtmlContent}
             onUpdate={updateName}
             onDelete={deleteName}
             meaningWidth={meaningWidth}
             gridlines={gridlines}
             isViewMode={isViewMode}
+            onFocusChange={(isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
+              if (onCellFocusChange) {
+                onCellFocusChange('name-header', 'meaning', isFocused, applyFormatFn, applyHyperlinkFn, selectedText);
+              }
+            }}
+            workspaceId={workspaceId}
+            elementId={elementId}
           />
         )}
 

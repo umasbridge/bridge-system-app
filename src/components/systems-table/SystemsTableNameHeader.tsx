@@ -11,20 +11,33 @@ interface GridlineOptions {
 
 interface SystemsTableNameHeaderProps {
   name: string;
+  htmlContent?: string;
   onUpdate: (name: string, htmlContent?: string) => void;
   onDelete: () => void;
   meaningWidth: number;
   gridlines?: GridlineOptions;
   isViewMode?: boolean;
+  onFocusChange?: (
+    isFocused: boolean,
+    applyFormatFn?: (format: any) => void,
+    applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void,
+    selectedText?: string
+  ) => void;
+  workspaceId?: string;
+  elementId?: string;
 }
 
 export function SystemsTableNameHeader({
   name,
+  htmlContent,
   onUpdate,
   onDelete,
   meaningWidth,
   gridlines,
-  isViewMode
+  isViewMode,
+  onFocusChange,
+  workspaceId,
+  elementId
 }: SystemsTableNameHeaderProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -50,12 +63,15 @@ export function SystemsTableNameHeader({
       <div className="px-2 py-1.5">
         <RichTextCell
           value={name}
-          htmlValue={undefined}
+          htmlValue={htmlContent}
           onChange={(text, html) => onUpdate(text, html)}
           placeholder="Table name"
           minHeight={20}
           columnWidth={meaningWidth}
           readOnly={isViewMode}
+          onFocusChange={onFocusChange}
+          workspaceId={workspaceId}
+          elementId={elementId}
         />
       </div>
 
