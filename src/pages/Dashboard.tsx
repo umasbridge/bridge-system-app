@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, FolderOpen, FilePlus } from 'lucide-react';
 import { auth } from '../lib/mockAuth';
-import { workspaceOperations, elementOperations } from '../db/database';
+import { workspaceOperations, elementOperations } from '../lib/supabase-db';
 import { Button } from '../components/ui/button';
 import { CreateSystemDialog } from '../components/workspace-system/CreateSystemDialog';
 import { OpenSystemDialog } from '../components/workspace-system/OpenSystemDialog';

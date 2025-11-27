@@ -14,7 +14,7 @@ import { WorkspaceFormatPanel } from './WorkspaceFormatPanel';
 import { ElementNameDialog } from './ElementNameDialog';
 import { ShareDialog } from './ShareDialog';
 import * as pdfjsLib from 'pdfjs-dist';
-import { elementOperations, WorkspaceElement as DBWorkspaceElement, workspaceOperations, Workspace } from '../../db/database';
+import { elementOperations, WorkspaceElement as DBWorkspaceElement, workspaceOperations, Workspace } from '../../lib/supabase-db';
 
 // Use worker from public directory
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -516,7 +516,7 @@ export function WorkspaceEditor({
   const handleInsertExistingElement = async (existingElement: DBWorkspaceElement) => {
     // Create a copy of the existing element with a new ID and position in this workspace
     const position = getNextPosition();
-    const newElementId = Math.random().toString(36).substring(7);
+    const newElementId = crypto.randomUUID();
 
     const newElement = {
       ...existingElement,
@@ -575,7 +575,7 @@ export function WorkspaceEditor({
         }];
         const hasVisibleName = Boolean(name); // Name will be visible if provided
         const calculatedHeight = calculateTableHeight(initialRows, hasVisibleName);
-        newElementId = Math.random().toString(36).substring(7);
+        newElementId = crypto.randomUUID();
         const newElement: SystemsTableElement & { workspaceId: string } = {
           id: newElementId,
           workspaceId,
@@ -601,7 +601,7 @@ export function WorkspaceEditor({
         break;
       }
       case 'text': {
-        newElementId = Math.random().toString(36).substring(7);
+        newElementId = crypto.randomUUID();
         const newElement: TextElement & { workspaceId: string } = {
           id: newElementId,
           workspaceId,
@@ -620,7 +620,7 @@ export function WorkspaceEditor({
       }
       case 'image': {
         const { src, alt } = pendingElement.data;
-        newElementId = Math.random().toString(36).substring(7);
+        newElementId = crypto.randomUUID();
         const newElement: ImageElement & { workspaceId: string } = {
           id: newElementId,
           workspaceId,
@@ -640,7 +640,7 @@ export function WorkspaceEditor({
       }
       case 'pdf': {
         const { fileName, totalPages, pageImages } = pendingElement.data;
-        newElementId = Math.random().toString(36).substring(7);
+        newElementId = crypto.randomUUID();
         const newElement: PdfElement & { workspaceId: string } = {
           id: newElementId,
           workspaceId,
@@ -804,7 +804,7 @@ export function WorkspaceEditor({
 
           // Create PDF element directly without name dialog
           const position = getNextPosition();
-          const newElementId = Math.random().toString(36).substring(7);
+          const newElementId = crypto.randomUUID();
           const newElement: PdfElement & { workspaceId: string } = {
             id: newElementId,
             workspaceId,

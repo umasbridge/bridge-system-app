@@ -3,7 +3,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { X, Plus, Trash2, Edit2 } from 'lucide-react';
-import { workspaceOperations, Partner } from '../../db/database';
+import { workspaceOperations, Partner } from '../../lib/supabase-db';
 
 interface ShareDialogProps {
   workspaceName: string;

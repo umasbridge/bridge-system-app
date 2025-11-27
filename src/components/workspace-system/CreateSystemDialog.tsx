@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { workspaceOperations, Workspace } from '../../db/database';
+import { workspaceOperations, Workspace } from '../../lib/supabase-db';
 
 interface CreateSystemDialogProps {
   onClose: () => void;

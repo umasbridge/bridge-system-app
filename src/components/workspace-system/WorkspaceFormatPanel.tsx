@@ -4,7 +4,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Checkbox } from '../ui/checkbox';
 import { X } from 'lucide-react';
-import { Workspace } from '../../db/database';
+import { Workspace } from '../../lib/supabase-db';
 
 interface WorkspaceFormatPanelProps {
   workspace: Workspace;

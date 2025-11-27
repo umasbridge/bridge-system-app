@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth-context';
 
 export function Signup() {
   const navigate = useNavigate();
-  const { signUp } = useAuth();
+  const { signUp, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -69,6 +69,7 @@ export function Signup() {
           <div className="space-y-3">
             <button
               type="button"
+              onClick={() => signInWithGoogle()}
               className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-neutral-300 rounded hover:bg-neutral-50 transition-colors"
               aria-label="Sign up with Google"
             >

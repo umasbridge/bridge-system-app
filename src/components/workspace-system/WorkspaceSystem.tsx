@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { Plus, X } from 'lucide-react';
 import { WorkspaceEditor } from './WorkspaceEditor';
 import { WorkspaceNameDialog } from './WorkspaceNameDialog';
-import { workspaceOperations, Workspace as DBWorkspace } from '../../db/database';
+import { workspaceOperations, imageOperations, Workspace as DBWorkspace } from '../../lib/supabase-db';
 
 interface Workspace {
   id: string;
@@ -275,6 +275,13 @@ export function WorkspaceSystem() {
       setActiveWorkspaceId(previousWorkspaceId);
     } else {
       // No history, so delete the workspace (this is the original behavior)
+      // First clean up all images in Supabase Storage
+      try {
+        await imageOperations.deleteByWorkspaceId(workspaceId);
+      } catch (err) {
+        console.error('Failed to delete workspace images from storage:', err);
+      }
+      // Then delete the workspace (cascades to elements via DB)
       await workspaceOperations.delete(workspaceId);
       setWorkspaces(workspaces.filter(ws => ws.id !== workspaceId));
       if (activeWorkspaceId === workspaceId) {

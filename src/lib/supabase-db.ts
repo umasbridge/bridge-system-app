@@ -505,11 +505,12 @@ export const elementOperations = {
 // IMAGE OPERATIONS (using Supabase Storage)
 // =====================
 
+// Legacy interface for component compatibility
 export interface ImageBlob {
   id: string;
   workspaceId: string;
   elementId: string;
-  url: string;  // Changed from blob to URL
+  blob: Blob;  // The actual blob data
   fileName: string;
   mimeType: string;
   width: number;
@@ -518,11 +519,17 @@ export interface ImageBlob {
 }
 
 export const imageOperations = {
-  async create(image: Omit<ImageBlob, 'url'> & { blob: Blob }): Promise<string> {
+  /**
+   * Upload an image to Supabase Storage.
+   * Returns the public URL that can be used directly as img src.
+   * The image is stored at: userId/workspaceId/elementId/imageId
+   */
+  async create(image: ImageBlob): Promise<string> {
     const userId = await getCurrentUserId();
-    const path = `${userId}/${image.workspaceId}/${image.elementId}/${image.fileName}`;
+    // Use image.id (not fileName) to ensure uniqueness
+    const path = `${userId}/${image.workspaceId}/${image.elementId}/${image.id}`;
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('workspace-files')
       .upload(path, image.blob, {
         contentType: image.mimeType,
@@ -538,20 +545,13 @@ export const imageOperations = {
     return urlData.publicUrl;
   },
 
-  async getUrl(workspaceId: string, elementId: string, fileName: string): Promise<string | null> {
+  /**
+   * Delete an image from Storage.
+   * Called when user deletes an image from a text element.
+   */
+  async delete(workspaceId: string, elementId: string, imageId: string): Promise<void> {
     const userId = await getCurrentUserId();
-    const path = `${userId}/${workspaceId}/${elementId}/${fileName}`;
-
-    const { data } = supabase.storage
-      .from('workspace-files')
-      .getPublicUrl(path);
-
-    return data.publicUrl;
-  },
-
-  async delete(workspaceId: string, elementId: string, fileName: string): Promise<void> {
-    const userId = await getCurrentUserId();
-    const path = `${userId}/${workspaceId}/${elementId}/${fileName}`;
+    const path = `${userId}/${workspaceId}/${elementId}/${imageId}`;
 
     const { error } = await supabase.storage
       .from('workspace-files')
@@ -560,20 +560,81 @@ export const imageOperations = {
     if (error) throw error;
   },
 
+  /**
+   * Delete all images for a workspace.
+   * Called when deleting a workspace to clean up Storage.
+   */
   async deleteByWorkspaceId(workspaceId: string): Promise<void> {
     const userId = await getCurrentUserId();
-    const path = `${userId}/${workspaceId}`;
+    const basePath = `${userId}/${workspaceId}`;
 
-    // List all files in workspace folder
+    // List all element folders under this workspace
+    const { data: elementFolders } = await supabase.storage
+      .from('workspace-files')
+      .list(basePath);
+
+    if (!elementFolders || elementFolders.length === 0) return;
+
+    // For each element folder, list and delete all files
+    const allFilePaths: string[] = [];
+
+    for (const folder of elementFolders) {
+      if (folder.id === null) {
+        // This is a folder, list its contents
+        const folderPath = `${basePath}/${folder.name}`;
+        const { data: files } = await supabase.storage
+          .from('workspace-files')
+          .list(folderPath);
+
+        if (files && files.length > 0) {
+          files.forEach(f => {
+            if (f.id !== null) {  // Only include actual files
+              allFilePaths.push(`${folderPath}/${f.name}`);
+            }
+          });
+        }
+      } else {
+        // This is a file directly in the workspace folder
+        allFilePaths.push(`${basePath}/${folder.name}`);
+      }
+    }
+
+    if (allFilePaths.length > 0) {
+      await supabase.storage
+        .from('workspace-files')
+        .remove(allFilePaths);
+    }
+  },
+
+  /**
+   * Delete all images for an element.
+   * Called when deleting an element to clean up Storage.
+   */
+  async deleteByElementId(workspaceId: string, elementId: string): Promise<void> {
+    const userId = await getCurrentUserId();
+    const path = `${userId}/${workspaceId}/${elementId}`;
+
+    // List all files in element folder
     const { data: files } = await supabase.storage
       .from('workspace-files')
       .list(path);
 
     if (files && files.length > 0) {
-      const paths = files.map(f => `${path}/${f.name}`);
-      await supabase.storage
-        .from('workspace-files')
-        .remove(paths);
+      const paths = files
+        .filter(f => f.id !== null)  // Only actual files
+        .map(f => `${path}/${f.name}`);
+
+      if (paths.length > 0) {
+        await supabase.storage
+          .from('workspace-files')
+          .remove(paths);
+      }
     }
+  },
+
+  // Legacy method - no longer needed since images load directly from URLs
+  // Kept for compatibility but always returns empty array
+  async getByElementId(_elementId: string): Promise<ImageBlob[]> {
+    return [];
   },
 };

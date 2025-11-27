@@ -6,7 +6,7 @@ import { BaseElement } from '../element-look-and-feel/types';
 import { TextElementFormatPanel } from './TextElementFormatPanel';
 import { WorkspaceHyperlinkMenu } from './WorkspaceHyperlinkMenu';
 import { TextFormatPanel } from './TextFormatPanel';
-import { imageOperations, ImageBlob } from '../../db/database';
+import { imageOperations, ImageBlob } from '../../lib/supabase-db';
 import { createHistoryController, HistoryController } from '../../utils/rte/history';
 import { saveSelectionAsBookmarks, restoreSelectionFromBookmarks } from '../../utils/rte/selectionBookmarks';
 import { normalizeNodeTree } from '../../utils/rte/normalizeNodeTree';
@@ -59,47 +59,9 @@ export function TextElementComponent({
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
   const [imageResizing, setImageResizing] = useState(false);
   const imageResizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
-  const [imageObjectUrls, setImageObjectUrls] = useState<Map<string, string>>(new Map());
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
-  // Load images from IndexedDB and create object URLs
-  useEffect(() => {
-    const loadImages = async () => {
-      if (!element.id) return;
-
-      // Get all images for this element
-      const images = await imageOperations.getByElementId(element.id);
-
-      // Create object URLs for each image
-      const urlMap = new Map<string, string>();
-      images.forEach(img => {
-        const objectUrl = URL.createObjectURL(img.blob);
-        urlMap.set(img.id, objectUrl);
-      });
-
-      setImageObjectUrls(urlMap);
-    };
-
-    loadImages();
-
-    // Cleanup object URLs on unmount
-    return () => {
-      imageObjectUrls.forEach(url => URL.revokeObjectURL(url));
-    };
-  }, [element.id, element.htmlContent]);
-
-  // Update image src attributes when object URLs change
-  useEffect(() => {
-    if (!contentEditableRef.current) return;
-
-    const images = contentEditableRef.current.querySelectorAll('img[data-image-id]');
-    images.forEach((img) => {
-      const imageId = img.getAttribute('data-image-id');
-      if (imageId && imageObjectUrls.has(imageId)) {
-        (img as HTMLImageElement).src = imageObjectUrls.get(imageId)!;
-      }
-    });
-  }, [imageObjectUrls]);
+  // Images now use Supabase Storage URLs directly - no need for objectURL loading
 
   // Handle Delete/Backspace for selected images
   useEffect(() => {
@@ -115,9 +77,13 @@ export function TextElementComponent({
         // Remove image from DOM
         selectedImage.remove();
 
-        // Delete from IndexedDB
-        if (imageId) {
-          await imageOperations.delete(imageId);
+        // Delete from Supabase Storage
+        if (imageId && element.workspaceId) {
+          try {
+            await imageOperations.delete(element.workspaceId, element.id, imageId);
+          } catch (err) {
+            console.error('Failed to delete image from storage:', err);
+          }
         }
 
         // Update content
@@ -137,7 +103,7 @@ export function TextElementComponent({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selectedImage, onUpdate]);
+  }, [selectedImage, onUpdate, element.workspaceId, element.id]);
 
   // Handle undo/redo keyboard shortcuts
   useEffect(() => {
@@ -522,13 +488,13 @@ export function TextElementComponent({
   const insertImageFromFile = async (file: File) => {
     if (!contentEditableRef.current) return;
 
-    // Generate unique image ID
-    const imageId = Math.random().toString(36).substring(7);
+    // Generate unique image ID (UUID for Supabase compatibility)
+    const imageId = crypto.randomUUID();
 
     // Get image dimensions
     const dimensions = await getImageDimensions(file);
 
-    // Store image in IndexedDB
+    // Upload image to Supabase Storage
     const imageBlob: ImageBlob = {
       id: imageId,
       workspaceId: element.workspaceId || '',
@@ -541,22 +507,13 @@ export function TextElementComponent({
       createdAt: Date.now()
     };
 
-    await imageOperations.create(imageBlob);
+    // Get the Storage URL - this is permanent and works after refresh
+    const storageUrl = await imageOperations.create(imageBlob);
 
-    // Create object URL for immediate display
-    const objectUrl = URL.createObjectURL(file);
-
-    // Update object URL map
-    setImageObjectUrls(prev => {
-      const newMap = new Map(prev);
-      newMap.set(imageId, objectUrl);
-      return newMap;
-    });
-
-    // Insert img element with data-image-id
+    // Insert img element with data-image-id and Storage URL
     const img = document.createElement('img');
     img.setAttribute('data-image-id', imageId);
-    img.src = objectUrl;
+    img.src = storageUrl;  // Use Storage URL directly (not objectURL)
     img.style.width = '300px'; // Default initial width
     img.style.display = 'block';
     img.style.margin = '8px 0';

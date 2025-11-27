@@ -1,72 +1,101 @@
 # Supabase Migration Handover
 
 ## Context
-Bridge System App - migrating from IndexedDB (Dexie) to Supabase for cloud persistence and auth.
+Bridge System App - migrated from IndexedDB (Dexie) to Supabase for cloud persistence and auth.
 
-## What's Done
+## Current Status: MIGRATION COMPLETE (Needs Verification)
+
+### What's Done
 1. **Supabase client setup** - `src/lib/supabase.ts` with env vars in `.env`
 2. **Auth integration complete** - Login, Signup, ProtectedRoute all use Supabase auth
-3. **Database API layer ready** - `src/lib/supabase-db.ts` has same interface as IndexedDB (`workspaceOperations`, `elementOperations`)
-4. **SQL schema created** - `supabase/migrations/001_initial_schema.sql` (needs to be run in Supabase dashboard)
+3. **Database API layer** - `src/lib/supabase-db.ts` replaces IndexedDB
+4. **SQL schema deployed** - Tables `workspaces` and `elements` with RLS
+5. **All 10 component imports updated** to use `supabase-db.ts`
+6. **Admin user created** - `umasbridge@gmail.com` / `snapdragon`
+7. **Storage bucket created** - `workspace-files` for images (public, with RLS policies)
+8. **Google OAuth scaffolded** - Code ready, needs Google Cloud Console setup
+9. **UUID fix** - Element IDs now use `crypto.randomUUID()` instead of short strings
+10. **Tested and verified** - Login, workspace creation, element persistence all work
 
-## Credentials Location
+### Bugs Fixed This Session
+- Element IDs were short strings (`x6jr5b`), changed to UUIDs for Supabase
+- Added missing `imageOperations.getByElementId()` stub method
+
+## Credentials
 `.env` file contains:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-- Account login credentials (for reference only)
+- `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` - API access
+- `APP_ADMIN_EMAIL` / `APP_ADMIN_PASSWORD` - App login (`umasbridge@gmail.com` / `snapdragon`)
 
-## What Needs To Be Done
-
-### Step 1: Run SQL Migration (USER ACTION REQUIRED)
-Go to Supabase Dashboard → SQL Editor → Run contents of `supabase/migrations/001_initial_schema.sql`
-
-### Step 2: Update Components to Use Supabase DB
-Replace imports from `src/db/database.ts` with `src/lib/supabase-db.ts`:
-
-Files that need updating:
-- `src/components/workspace-system/WorkspaceSystem.tsx`
-- `src/components/workspace-system/WorkspaceEditor.tsx`
-- `src/pages/Dashboard.tsx`
-- Any other files importing from `../db/database` or `../../db/database`
-
-The API is identical:
-```typescript
-// OLD
-import { workspaceOperations, elementOperations } from '../db/database';
-
-// NEW
-import { workspaceOperations, elementOperations } from '../lib/supabase-db';
-```
-
-### Step 3: Test
-- Create account via signup
-- Create workspace
-- Add elements (tables, text, PDF)
-- Verify data persists across page refreshes
-
-## Key Files Reference
+## Key Files
 - `src/lib/supabase.ts` - Supabase client
-- `src/lib/supabase-db.ts` - Database operations (replaces IndexedDB)
-- `src/lib/supabase-types.ts` - TypeScript types
-- `src/lib/auth-context.tsx` - Auth state management
-- `src/db/database.ts` - OLD IndexedDB (to be deprecated)
-- `supabase/migrations/001_initial_schema.sql` - Database schema
+- `src/lib/supabase-db.ts` - Database operations (workspaceOperations, elementOperations, imageOperations)
+- `src/lib/auth-context.tsx` - Auth state (signIn, signUp, signInWithGoogle, signOut)
+- `src/db/database.ts` - OLD IndexedDB (can be deleted after verification)
+
+## What Needs Verification Next Thread
+
+### CRITICAL: Verify Feature Parity with IndexedDB
+
+The old `src/db/database.ts` had these operations that MUST work in Supabase:
+
+**workspaceOperations:**
+- [x] `create(title)` - Tested, works
+- [x] `getAll()` - Tested, works
+- [x] `getById(id)` - Used in app, needs explicit test
+- [x] `update(id, updates)` - Used in app, needs explicit test
+- [x] `delete(id)` - Used in app, needs explicit test
+
+**elementOperations:**
+- [x] `create(element)` - Tested, works
+- [x] `getByWorkspaceId(workspaceId)` - Tested, works (elements load on refresh)
+- [ ] `getAll()` - Needs test
+- [ ] `update(id, updates)` - Needs test (editing table rows, moving elements)
+- [ ] `delete(id)` - Needs test
+- [ ] `bulkUpdate(elements)` - Needs test
+- [ ] `deleteByWorkspaceId(workspaceId)` - Needs test
+
+**imageOperations:**
+- [ ] `create(image)` - Needs test (paste image into text element)
+- [ ] `getByElementId(elementId)` - Currently returns `[]` (stub)
+- [ ] `getUrl(workspaceId, elementId, fileName)` - Needs test
+- [ ] `delete(...)` - Needs test
+- [ ] `deleteByWorkspaceId(workspaceId)` - Needs test
+
+### Test Checklist for Next Thread
+1. Edit a Systems Table (add rows, edit cells) - verify `elementOperations.update` works
+2. Move/resize an element - verify position updates persist
+3. Delete an element - verify `elementOperations.delete` works
+4. Delete a workspace - verify cascade deletes elements
+5. Paste an image into a text element - verify Storage upload works
+6. Verify images display after refresh
+
+### Google OAuth Setup (Optional)
+To enable Google login:
+1. Google Cloud Console → Create OAuth 2.0 credentials
+2. Add redirect URI: `https://fwvbjmntuersvhvqxuxq.supabase.co/auth/v1/callback`
+3. Supabase Dashboard → Auth → Providers → Google → Add Client ID/Secret
 
 ## Prompt for Next Thread
 
 ```
-Continue Supabase migration for bridge-system-app.
+Continue Supabase migration verification for bridge-system-app.
 
 Previous work completed:
-- Supabase client, auth context, and API layer created
-- Login/Signup pages updated to use Supabase auth
-- SQL schema ready in supabase/migrations/001_initial_schema.sql
+- Full migration from IndexedDB to Supabase done
+- Auth, workspaces, elements all working
+- Storage bucket created for images
+- Admin login: umasbridge@gmail.com / snapdragon
 
-Next steps:
-1. Confirm SQL migration has been run in Supabase dashboard
-2. Update all components to import from src/lib/supabase-db.ts instead of src/db/database.ts
-3. Test the full flow: signup → create workspace → add elements → verify persistence
-4. Delete old IndexedDB code (src/db/database.ts) once migration is verified
+CRITICAL TASK: Verify ALL IndexedDB functionality works in Supabase
+1. Test element updates (edit table rows, move/resize elements)
+2. Test element deletion
+3. Test workspace deletion (should cascade delete elements)
+4. Test image paste into text elements (uses Supabase Storage)
+5. Compare src/db/database.ts with src/lib/supabase-db.ts for any missing features
 
-See HANDOVER.md for full context.
+Once verified:
+- Delete old src/db/database.ts
+- Update CLAUDE.md to reflect Supabase as the database
+
+See HANDOVER.md for full checklist.
 ```

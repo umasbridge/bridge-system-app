@@ -3,7 +3,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { X } from 'lucide-react';
-import { elementOperations, WorkspaceElement } from '../../db/database';
+import { elementOperations, WorkspaceElement } from '../../lib/supabase-db';
 
 interface ElementNameDialogProps {
   elementType: string;

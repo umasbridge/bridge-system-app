@@ -6,7 +6,7 @@ import logoImage from '../assets/logo.png';
 
 export function Login() {
   const navigate = useNavigate();
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -47,6 +47,7 @@ export function Login() {
           <div className="space-y-3">
             <button
               type="button"
+              onClick={() => signInWithGoogle()}
               className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-neutral-300 rounded hover:bg-neutral-50 transition-colors"
               aria-label="Continue with Google"
             >
