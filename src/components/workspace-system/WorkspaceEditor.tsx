@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { X } from 'lucide-react';
 import { ResizableElement } from '../element-look-and-feel/ResizableElement';
 import { BaseElement } from '../element-look-and-feel/types';
@@ -108,6 +107,11 @@ export function WorkspaceEditor({
   const cellApplyHyperlinkRef = useRef<((workspaceName: string, linkType: 'comment' | 'new-page') => void) | null>(null);
   const [textElementSelectedText, setTextElementSelectedText] = useState<string>('');
   const [cellSelectedText, setCellSelectedText] = useState<string>('');
+  const [workspaceNameSelectedText, setWorkspaceNameSelectedText] = useState<string>('');
+  const [focusedWorkspaceName, setFocusedWorkspaceName] = useState(false);
+  const workspaceNameRef = useRef<HTMLDivElement>(null);
+  const workspaceNameApplyFormatRef = useRef<((format: any) => void) | null>(null);
+  const workspaceNameSavedSelectionRef = useRef<Range | null>(null);
   const [showNameDialog, setShowNameDialog] = useState(false);
   const [pendingElement, setPendingElement] = useState<{
     type: 'systems-table' | 'text' | 'image' | 'pdf';
@@ -233,6 +237,232 @@ export function WorkspaceEditor({
       onTitleChange?.(newTitle);
     }
   };
+
+  // Workspace name text selection handler
+  const handleWorkspaceNameSelect = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const selectedText = selection.toString();
+
+    if (selectedText.length > 0) {
+      setWorkspaceNameSelectedText(selectedText);
+      // Save the selection range
+      workspaceNameSavedSelectionRef.current = selection.getRangeAt(0).cloneRange();
+    } else {
+      setWorkspaceNameSelectedText('');
+    }
+  };
+
+  // Workspace name focus handler
+  const handleWorkspaceNameFocus = () => {
+    setFocusedWorkspaceName(true);
+    // Clear other focus states
+    setFocusedTextElementId(null);
+    setFocusedCellId(null);
+    setSelectedId(null);
+    setWorkspaceSelected(false);
+    setFormatPanelId(null);
+  };
+
+  // Workspace name blur handler
+  const handleWorkspaceNameBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    // Don't blur if clicking on format panel
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    if (relatedTarget?.closest('[data-text-format-panel]')) {
+      return;
+    }
+
+    // Extract plain text for the title
+    if (workspaceNameRef.current) {
+      const plainText = workspaceNameRef.current.textContent || '';
+      if (plainText !== title) {
+        handleTitleChange(plainText);
+      }
+    }
+
+    setFocusedWorkspaceName(false);
+    setWorkspaceNameSelectedText('');
+    workspaceNameSavedSelectionRef.current = null;
+  };
+
+  // Workspace name input handler
+  const handleWorkspaceNameInput = () => {
+    if (workspaceNameRef.current) {
+      const plainText = workspaceNameRef.current.textContent || '';
+      if (plainText !== title) {
+        setTitle(plainText);
+        if (plainText.trim()) {
+          onTitleChange?.(plainText);
+        }
+      }
+    }
+  };
+
+  // Apply format to workspace name
+  const applyWorkspaceNameFormat = (format: any) => {
+    if (!workspaceNameRef.current) return;
+
+    // Focus the contenteditable
+    workspaceNameRef.current.focus();
+
+    // Try to restore saved selection or get current selection
+    let workingRange: Range | null = workspaceNameSavedSelectionRef.current;
+
+    if (!workingRange) {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        workingRange = selection.getRangeAt(0);
+
+        // If no text is selected, select all content
+        if (selection.toString().length === 0) {
+          workingRange = document.createRange();
+          workingRange.selectNodeContents(workspaceNameRef.current);
+          selection.removeAllRanges();
+          selection.addRange(workingRange);
+        }
+      } else {
+        // No selection at all, select all content
+        workingRange = document.createRange();
+        workingRange.selectNodeContents(workspaceNameRef.current);
+        const selection = window.getSelection();
+        if (selection) {
+          selection.removeAllRanges();
+          selection.addRange(workingRange);
+        }
+      }
+    } else {
+      // Restore the saved selection
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(workingRange);
+      }
+    }
+
+    if (!workingRange) return;
+
+    // Create a span with the formatting
+    const span = document.createElement('span');
+    const styles: string[] = [];
+
+    if (format.color) {
+      styles.push(`color: ${format.color}`);
+    }
+    if (format.backgroundColor && format.backgroundColor !== 'transparent') {
+      styles.push(`background-color: ${format.backgroundColor}`);
+    }
+    if (format.fontFamily) {
+      styles.push(`font-family: ${format.fontFamily}`);
+    }
+    if (format.fontSize) {
+      styles.push(`font-size: ${format.fontSize}px`);
+    }
+    if (format.bold) {
+      styles.push(`font-weight: bold`);
+    }
+    if (format.italic) {
+      styles.push(`font-style: italic`);
+    }
+
+    // Handle text decoration
+    const decorations: string[] = [];
+    if (format.underline) {
+      decorations.push('underline');
+    }
+    if (format.strikethrough) {
+      decorations.push('line-through');
+    }
+    if (decorations.length > 0) {
+      styles.push(`text-decoration: ${decorations.join(' ')}`);
+    }
+
+    span.style.cssText = styles.join('; ');
+
+    // Apply formatting
+    try {
+      const range = workingRange;
+      const fragment = range.extractContents();
+
+      // Collect text segments with their existing styles
+      const segments: Array<{ text: string; cssText: string }> = [];
+
+      const collectTextSegments = (node: Node, parentCssText: string = '') => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent || '';
+          if (text) {
+            segments.push({ text, cssText: parentCssText });
+          }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as HTMLElement;
+          const currentCssText = element.style.cssText || parentCssText;
+          node.childNodes.forEach(child => {
+            collectTextSegments(child, currentCssText);
+          });
+        } else if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+          node.childNodes.forEach(child => {
+            collectTextSegments(child, parentCssText);
+          });
+        }
+      };
+
+      collectTextSegments(fragment);
+
+      // Create new spans with merged styles
+      const mergedFragment = document.createDocumentFragment();
+
+      segments.forEach(({ text, cssText }) => {
+        const newSpan = document.createElement('span');
+
+        // Copy existing styles first
+        if (cssText) {
+          newSpan.style.cssText = cssText;
+        }
+
+        // Override with new format properties
+        if (format.color) newSpan.style.color = format.color;
+        if (format.backgroundColor && format.backgroundColor !== 'transparent') {
+          newSpan.style.backgroundColor = format.backgroundColor;
+        }
+        if (format.fontFamily) newSpan.style.fontFamily = format.fontFamily;
+        if (format.fontSize) newSpan.style.fontSize = `${format.fontSize}px`;
+        if (format.bold) newSpan.style.fontWeight = 'bold';
+        if (format.italic) newSpan.style.fontStyle = 'italic';
+        if (format.underline || format.strikethrough) {
+          const decorations: string[] = [];
+          if (format.underline) decorations.push('underline');
+          if (format.strikethrough) decorations.push('line-through');
+          newSpan.style.textDecoration = decorations.join(' ');
+        }
+
+        newSpan.textContent = text;
+        mergedFragment.appendChild(newSpan);
+      });
+
+      range.insertNode(mergedFragment);
+
+      // Clear saved selection
+      workspaceNameSavedSelectionRef.current = null;
+    } catch (error) {
+      console.error('Error applying format to workspace name:', error);
+    }
+  };
+
+  // Set up the apply format ref
+  useEffect(() => {
+    workspaceNameApplyFormatRef.current = applyWorkspaceNameFormat;
+  }, []);
+
+  // Initialize workspace name contentEditable with title
+  useEffect(() => {
+    if (workspaceNameRef.current && !focusedWorkspaceName) {
+      // Only update if content is different to avoid cursor issues
+      const currentContent = workspaceNameRef.current.textContent || '';
+      if (currentContent !== title) {
+        workspaceNameRef.current.textContent = title;
+      }
+    }
+  }, [title, focusedWorkspaceName]);
 
   const handleWorkspaceUpdate = async (updates: Partial<Workspace>) => {
     if (workspace) {
@@ -790,6 +1020,7 @@ export function WorkspaceEditor({
       setSelectedId(null);
       setFocusedTextElementId(null);
       setFocusedCellId(null);
+      setFocusedWorkspaceName(false);
       setWorkspaceSelected(false);
       setFormatPanelId(null);
     }
@@ -870,15 +1101,26 @@ export function WorkspaceEditor({
       {/* Title Bar */}
       {!hideControls && (
         <div className="bg-white border-b border-gray-200 px-8 py-3 flex-shrink-0 flex items-center gap-3">
-          <Input
-            type="text"
-            value={title}
-            onChange={(e) => handleTitleChange(e.target.value)}
-            className="text-lg font-semibold flex-1"
-            placeholder="Enter workspace name..."
-            autoFocus={!isViewMode}
-            readOnly={isViewMode}
-            disabled={isViewMode}
+          <div
+            ref={workspaceNameRef}
+            contentEditable={!isViewMode}
+            suppressContentEditableWarning
+            onFocus={handleWorkspaceNameFocus}
+            onBlur={handleWorkspaceNameBlur}
+            onInput={handleWorkspaceNameInput}
+            onMouseUp={handleWorkspaceNameSelect}
+            onKeyUp={handleWorkspaceNameSelect}
+            className={`text-lg font-semibold flex-1 min-h-[32px] px-3 py-1 rounded-md border outline-none ${
+              isViewMode
+                ? 'bg-gray-50 text-gray-700 border-transparent cursor-default'
+                : 'bg-white border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+            } ${!title ? 'empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400' : ''}`}
+            style={{
+              minWidth: '200px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden'
+            }}
+            data-placeholder="Enter workspace name..."
           />
           {onSaveAndClose && (
             <Button
@@ -1356,6 +1598,30 @@ export function WorkspaceEditor({
               onApplyHyperlink={(workspaceName, linkType) => {
                 if (cellApplyHyperlinkRef.current) {
                   cellApplyHyperlinkRef.current(workspaceName, linkType);
+                }
+              }}
+              isSidePanel={true}
+            />
+          </div>
+        )}
+
+        {/* Workspace Name Format Panel - Appears on right side when workspace name is focused */}
+        {focusedWorkspaceName && (
+          <div
+            className="fixed right-0 top-1/2 -translate-y-1/2 z-50 bg-white rounded-l-lg shadow-lg border border-gray-200 p-4 w-64"
+            data-text-format-panel
+          >
+            <TextFormatPanel
+              position={{ x: 0, y: 0 }}
+              selectedText={workspaceNameSelectedText}
+              onClose={() => {
+                setFocusedWorkspaceName(false);
+                setWorkspaceNameSelectedText('');
+                workspaceNameSavedSelectionRef.current = null;
+              }}
+              onApply={(format) => {
+                if (workspaceNameApplyFormatRef.current) {
+                  workspaceNameApplyFormatRef.current(format);
                 }
               }}
               isSidePanel={true}
