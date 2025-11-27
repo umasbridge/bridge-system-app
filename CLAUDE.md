@@ -22,18 +22,15 @@ Interactive workspace web app for bridge partnerships to collaboratively build a
 - Plain JavaScript (type safety critical for complex nested data structures)
 **Impact:** All components TypeScript, contenteditable-based rich text editing
 
-### Database: IndexedDB + Dexie (MVP) (2025-11-21)
-**What:** Browser-based IndexedDB with Dexie wrapper, local-first persistence
-**Why:**
-- Zero cloud costs (user constraint: Supabase charging "the moon")
-- Desktop-first app benefits from offline-first architecture
-- 5GB-50GB storage per browser (sufficient for MVP)
-- Dexie provides React hooks and relational queries
-- Sync layer (Dexie Cloud) can be added later for collaboration
-**Alternatives Rejected:**
-- Supabase (cost concern raised by user)
-- Turso/Neon (premature for desktop-only MVP)
-**Impact:** All workspace/system data stored client-side, export/import for sharing in MVP
+### Database: Migrating to Supabase (2025-11-27)
+**What:** Moving from IndexedDB + Dexie to Supabase for cloud persistence
+**Previous (MVP):** Browser-based IndexedDB with Dexie wrapper, local-first persistence
+**Why Migration:**
+- Need real collaboration features (multi-user editing, sharing)
+- Cloud sync required for cross-device access
+- Supabase provides auth, real-time subscriptions, and PostgreSQL
+**Migration Status:** In Progress
+**Impact:** Will require schema migration, API layer changes, and auth integration
 
 ### Component Architecture: Native React Over Figma Exports (2025-11-21)
 **What:** Custom React components (BiddingTable, SystemsTable, TextElement) with dynamic state
@@ -83,8 +80,8 @@ Interactive workspace web app for bridge partnerships to collaboratively build a
 - ✅ Visual nested bidding tables (unique, better than text)
 - ✅ 3-mode hyperlink navigation (more sophisticated than BridgeDocs)
 - ✅ PDF integration
-- ✅ IndexedDB persistence (local-first, offline-capable)
-- ❌ No collaboration features yet (roadmap)
+- ✅ Rich text formatting in workspace names
+- 🔄 Supabase migration in progress (cloud persistence, auth, collaboration)
 - ❌ No template library yet (roadmap)
 
 **Monetization Potential:** Freemium ($5-10/month for collaboration) or one-time ($30-50 lifetime)
@@ -131,6 +128,14 @@ Interactive workspace web app for bridge partnerships to collaboratively build a
    - Location: WorkspaceEditor.tsx, ElementNameDialog.tsx, PdfElement.tsx
    - All features tested and working in browser
 
+6. **Workspace Name Bar Text Formatting** - COMPLETED 2025-11-27
+   - Replaced Input element with contentEditable div for workspace name
+   - Added TextFormatPanel integration when workspace name is focused
+   - Supports: font, size, color, bold, italic, underline, strikethrough, highlight
+   - Format panel appears on right side when editing, disappears when clicking elsewhere
+   - Hyperlink option hidden (not applicable for workspace name)
+   - Location: WorkspaceEditor.tsx:242-466 (handlers), 1093-1113 (contentEditable), 1598-1620 (format panel)
+
 ## File Structure
 ```
 src/
@@ -173,9 +178,8 @@ src/
 - Competitive gap: No tool combines visual tables + collaboration + hyperlinked nav + PDF integration
 - Speed to market critical: BridgeDocs has 3-month head start but inferior visual tools
 
-### User Preferences for This Project (Added: 2025-11-21, Expires: 2025-12-21)
+### User Preferences for This Project (Updated: 2025-11-27)
 - "Deep" approach preferred (polish over speed)
 - Not scared of complexity (mentions Figma + Claude Code + Chrome DevTools MCP)
-- Cost-conscious (rejected Supabase due to pricing)
 - Will build first template manually using the app (dogfooding)
-- Collaboration features deferred (focus on core editing experience first)
+- Moving to Supabase for cloud persistence and collaboration features (2025-11-27)
