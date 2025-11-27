@@ -3,23 +3,33 @@
 ## Context
 Bridge System App - migrated from IndexedDB (Dexie) to Supabase for cloud persistence and auth.
 
-## Current Status: MIGRATION COMPLETE (Needs Verification)
+## Current Status: IMAGE OPERATIONS FIXED (Needs Manual Image Test)
 
-### What's Done
-1. **Supabase client setup** - `src/lib/supabase.ts` with env vars in `.env`
-2. **Auth integration complete** - Login, Signup, ProtectedRoute all use Supabase auth
-3. **Database API layer** - `src/lib/supabase-db.ts` replaces IndexedDB
-4. **SQL schema deployed** - Tables `workspaces` and `elements` with RLS
-5. **All 10 component imports updated** to use `supabase-db.ts`
-6. **Admin user created** - `umasbridge@gmail.com` / `snapdragon`
-7. **Storage bucket created** - `workspace-files` for images (public, with RLS policies)
-8. **Google OAuth scaffolded** - Code ready, needs Google Cloud Console setup
-9. **UUID fix** - Element IDs now use `crypto.randomUUID()` instead of short strings
-10. **Tested and verified** - Login, workspace creation, element persistence all work
+### What's Done (This Session - 2025-11-27)
+1. **Image operations rewritten for Supabase Storage**
+   - `imageOperations.create()` uploads to Storage, returns permanent URL
+   - `imageOperations.delete()` now takes (workspaceId, elementId, imageId)
+   - `imageOperations.deleteByWorkspaceId()` cleans up on workspace delete
+   - `imageOperations.deleteByElementId()` for element cleanup
+2. **Components updated for Storage URLs**
+   - `TextElement.tsx` and `RichTextCell.tsx` use Storage URLs directly (not objectURLs)
+   - Images use `crypto.randomUUID()` for proper UUIDs
+   - Removed objectURL loading machinery (no longer needed)
+3. **Workspace delete cleans Storage** - Added in `WorkspaceSystem.tsx`
+4. **++ button auto-expands parent** - Fixed UX issue where child rows were hidden
 
-### Bugs Fixed This Session
-- Element IDs were short strings (`x6jr5b`), changed to UUIDs for Supabase
-- Added missing `imageOperations.getByElementId()` stub method
+### Verified Working
+- [x] Text element creation and persistence
+- [x] Table element creation and persistence
+- [x] Table row data persistence (nested children save correctly)
+- [x] Workspace list retrieval
+- [x] Build passes without TypeScript errors
+- [x] No console errors
+
+### Still Needs Manual Testing
+- [ ] **Image paste** - Paste image into text element, refresh, verify it displays
+- [ ] Element deletion
+- [ ] Workspace deletion (should clean up Storage files)
 
 ## Credentials
 `.env` file contains:
@@ -29,73 +39,40 @@ Bridge System App - migrated from IndexedDB (Dexie) to Supabase for cloud persis
 ## Key Files
 - `src/lib/supabase.ts` - Supabase client
 - `src/lib/supabase-db.ts` - Database operations (workspaceOperations, elementOperations, imageOperations)
-- `src/lib/auth-context.tsx` - Auth state (signIn, signUp, signInWithGoogle, signOut)
+- `src/lib/auth-context.tsx` - Auth state
 - `src/db/database.ts` - OLD IndexedDB (can be deleted after verification)
 
-## What Needs Verification Next Thread
+## Known Issues / Cleanup Needed
+1. **Test workspace has ~15 empty child rows** - Created during ++ button testing
+   - Run this SQL to clean up: See "Cleanup SQL" section below
 
-### CRITICAL: Verify Feature Parity with IndexedDB
+## Cleanup SQL
+```sql
+-- View current table data structure
+SELECT id, name, data->'initialRows' as rows
+FROM elements WHERE type = 'systems-table';
 
-The old `src/db/database.ts` had these operations that MUST work in Supabase:
-
-**workspaceOperations:**
-- [x] `create(title)` - Tested, works
-- [x] `getAll()` - Tested, works
-- [x] `getById(id)` - Used in app, needs explicit test
-- [x] `update(id, updates)` - Used in app, needs explicit test
-- [x] `delete(id)` - Used in app, needs explicit test
-
-**elementOperations:**
-- [x] `create(element)` - Tested, works
-- [x] `getByWorkspaceId(workspaceId)` - Tested, works (elements load on refresh)
-- [ ] `getAll()` - Needs test
-- [ ] `update(id, updates)` - Needs test (editing table rows, moving elements)
-- [ ] `delete(id)` - Needs test
-- [ ] `bulkUpdate(elements)` - Needs test
-- [ ] `deleteByWorkspaceId(workspaceId)` - Needs test
-
-**imageOperations:**
-- [ ] `create(image)` - Needs test (paste image into text element)
-- [ ] `getByElementId(elementId)` - Currently returns `[]` (stub)
-- [ ] `getUrl(workspaceId, elementId, fileName)` - Needs test
-- [ ] `delete(...)` - Needs test
-- [ ] `deleteByWorkspaceId(workspaceId)` - Needs test
-
-### Test Checklist for Next Thread
-1. Edit a Systems Table (add rows, edit cells) - verify `elementOperations.update` works
-2. Move/resize an element - verify position updates persist
-3. Delete an element - verify `elementOperations.delete` works
-4. Delete a workspace - verify cascade deletes elements
-5. Paste an image into a text element - verify Storage upload works
-6. Verify images display after refresh
-
-### Google OAuth Setup (Optional)
-To enable Google login:
-1. Google Cloud Console → Create OAuth 2.0 credentials
-2. Add redirect URI: `https://fwvbjmntuersvhvqxuxq.supabase.co/auth/v1/callback`
-3. Supabase Dashboard → Auth → Providers → Google → Add Client ID/Secret
+-- To delete empty child rows, update the initialRows JSON manually in Supabase dashboard
+-- or delete the test workspace and recreate
+```
 
 ## Prompt for Next Thread
 
 ```
-Continue Supabase migration verification for bridge-system-app.
+Continue bridge-system-app development.
 
-Previous work completed:
-- Full migration from IndexedDB to Supabase done
-- Auth, workspaces, elements all working
-- Storage bucket created for images
-- Admin login: umasbridge@gmail.com / snapdragon
+Previous session completed:
+- Image operations rewritten for Supabase Storage
+- Components use Storage URLs directly (persist after refresh)
+- ++ button now auto-expands parent row
+- All verified: text/table persistence works
 
-CRITICAL TASK: Verify ALL IndexedDB functionality works in Supabase
-1. Test element updates (edit table rows, move/resize elements)
-2. Test element deletion
-3. Test workspace deletion (should cascade delete elements)
-4. Test image paste into text elements (uses Supabase Storage)
-5. Compare src/db/database.ts with src/lib/supabase-db.ts for any missing features
+PRIORITY TASKS:
+1. Manual test: Paste image into text element, refresh, verify it displays
+2. If images work, delete old src/db/database.ts
+3. Clean up test data (optional)
 
-Once verified:
-- Delete old src/db/database.ts
-- Update CLAUDE.md to reflect Supabase as the database
+Login: umasbridge@gmail.com / snapdragon
 
-See HANDOVER.md for full checklist.
+The app is at http://localhost:3001 (run `npm run dev` if not running)
 ```

@@ -249,20 +249,20 @@ export function SystemsTable({
     // Clear undo history on add action
     setHistory([]);
     setShowUndoHighlight(false);
-    
+
     // Clear the timeout as well
     if (undoTimeoutId) {
       clearTimeout(undoTimeoutId);
       setUndoTimeoutId(null);
     }
-    
+
     const addRecursive = (rows: RowData[]): RowData[] => {
       return rows.map(row => {
         if (row.id === id) {
-          const inheritedColor = row.children.length > 0 
-            ? row.children[row.children.length - 1].bidFillColor 
+          const inheritedColor = row.children.length > 0
+            ? row.children[row.children.length - 1].bidFillColor
             : undefined;
-          
+
           const newChild: RowData = {
             id: generateId(),
             bid: '',
@@ -270,7 +270,8 @@ export function SystemsTable({
             meaning: '',
             children: []
           };
-          return { ...row, children: [...row.children, newChild] };
+          // Auto-expand parent when adding child so user can see the new row
+          return { ...row, collapsed: false, children: [...row.children, newChild] };
         }
         if (row.children.length > 0) {
           return { ...row, children: addRecursive(row.children) };
