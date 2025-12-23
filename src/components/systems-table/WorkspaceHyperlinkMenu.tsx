@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MessageSquare, Columns, FileText, X } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { MessageSquare, Columns, FileText, X, Search } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -12,15 +12,24 @@ interface WorkspaceHyperlinkMenuProps {
   existingWorkspaces: string[];
 }
 
-export function WorkspaceHyperlinkMenu({ 
-  position, 
-  selectedText, 
-  onClose, 
+export function WorkspaceHyperlinkMenu({
+  position,
+  selectedText,
+  onClose,
   onApply,
-  existingWorkspaces 
+  existingWorkspaces
 }: WorkspaceHyperlinkMenuProps) {
   const [workspaceName, setWorkspaceName] = useState(selectedText || '');
   const [selectedLinkType, setSelectedLinkType] = useState<'comment' | 'split-view' | 'new-page' | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showExistingList, setShowExistingList] = useState(false);
+
+  // Filter workspaces based on search query
+  const filteredWorkspaces = useMemo(() => {
+    if (!searchQuery.trim()) return existingWorkspaces;
+    const query = searchQuery.toLowerCase();
+    return existingWorkspaces.filter(ws => ws.toLowerCase().includes(query));
+  }, [existingWorkspaces, searchQuery]);
 
   const handleApply = () => {
     if (workspaceName.trim() && selectedLinkType) {
@@ -32,7 +41,7 @@ export function WorkspaceHyperlinkMenu({
   return (
     <div
       data-hyperlink-menu
-      className="fixed z-[60] bg-white rounded-lg shadow-2xl border border-gray-200"
+      className="fixed z-[9999] bg-white rounded-lg shadow-2xl border border-gray-200"
       style={{
         left: position.x + 20,
         top: position.y - 10,
@@ -77,16 +86,68 @@ export function WorkspaceHyperlinkMenu({
           <Input
             id="workspace-name"
             type="text"
-            placeholder="Enter workspace name"
+            placeholder="Enter workspace name or select from list"
             value={workspaceName}
             onChange={(e) => setWorkspaceName(e.target.value)}
             className="w-full"
             autoFocus
           />
+
+          {/* Existing Workspaces Section */}
           {existingWorkspaces.length > 0 && (
-            <p className="text-xs text-gray-500">
-              Existing workspaces: {existingWorkspaces.join(', ')}
-            </p>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setShowExistingList(!showExistingList)}
+                className="text-xs text-blue-600 hover:text-blue-800 underline cursor-pointer"
+              >
+                {showExistingList ? 'Hide' : 'Show'} existing workspaces ({existingWorkspaces.length})
+              </button>
+
+              {showExistingList && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  {/* Search Input */}
+                  <div className="p-2 border-b border-gray-200 bg-gray-50">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        type="text"
+                        placeholder="Search workspaces..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-8 h-8 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Scrollable Workspace List */}
+                  <div className="max-h-40 overflow-y-auto">
+                    {filteredWorkspaces.length > 0 ? (
+                      filteredWorkspaces.map((ws, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => {
+                            setWorkspaceName(ws);
+                            setShowExistingList(false);
+                            setSearchQuery('');
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors ${
+                            workspaceName === ws ? 'bg-blue-100 text-blue-700' : 'text-gray-700'
+                          }`}
+                        >
+                          {ws}
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-3 py-2 text-sm text-gray-500 italic">
+                        No workspaces match "{searchQuery}"
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

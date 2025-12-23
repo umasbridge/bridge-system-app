@@ -18,7 +18,13 @@ export interface Database {
           background_color: string | null;
           canvas_width: number | null;
           canvas_height: number | null;
+          left_margin: number | null;
+          top_margin: number | null;
           partners: Partner[] | null;
+          is_system: boolean;
+          deleted_at: string | null;
+          backup_group_id: string | null;
+          backup_of: string | null;
         };
         Insert: {
           id?: string;
@@ -33,7 +39,13 @@ export interface Database {
           background_color?: string | null;
           canvas_width?: number | null;
           canvas_height?: number | null;
+          left_margin?: number | null;
+          top_margin?: number | null;
           partners?: Partner[] | null;
+          is_system?: boolean;
+          deleted_at?: string | null;
+          backup_group_id?: string | null;
+          backup_of?: string | null;
         };
         Update: {
           id?: string;
@@ -48,7 +60,13 @@ export interface Database {
           background_color?: string | null;
           canvas_width?: number | null;
           canvas_height?: number | null;
+          left_margin?: number | null;
+          top_margin?: number | null;
           partners?: Partner[] | null;
+          is_system?: boolean;
+          deleted_at?: string | null;
+          backup_group_id?: string | null;
+          backup_of?: string | null;
         };
       };
       elements: {
@@ -175,6 +193,7 @@ export interface RowData {
   meaningHtmlContent?: string;
   children: RowData[];
   collapsed?: boolean;
+  isMerged?: boolean; // When true, bid and meaning cells are merged into a single full-width meaning cell
 }
 
 // Convenience types for working with Supabase responses

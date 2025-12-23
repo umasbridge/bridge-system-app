@@ -1,8 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Resizable } from 're-resizable';
 import { RichTextCell } from './RichTextCell';
 import { ColorPicker } from './ColorPicker';
 import type { RowData } from './SystemsTable';
+
+// Default row min height (mygap - spacing between elements)
+// Total row height should be mygap (43px)
+// py-1.5 padding = 6px top + 6px bottom = 12px
+// borders = 1px top + 1px bottom = 2px
+// So content minHeight = 43 - 12 - 2 = 29px
+const ROW_MIN_HEIGHT = 29;
 
 interface GridlineOptions {
   enabled: boolean;
@@ -16,12 +24,14 @@ interface SystemsTableRowProps {
   getLevelWidth: (level: number) => number;
   getIndentWidth: (level: number) => number;
   onUpdateLevelWidth: (level: number, width: number) => void;
-  onUpdate: (id: string, updates: Partial<Pick<RowData, 'bid' | 'bidHtmlContent' | 'bidFillColor' | 'meaning' | 'meaningHtmlContent'>>) => void;
+  onUpdate: (id: string, updates: Partial<Pick<RowData, 'bid' | 'bidHtmlContent' | 'bidFillColor' | 'meaning' | 'meaningHtmlContent' | 'isMerged'>>) => void;
   onAddSibling: (id: string) => void;
+  onAddSiblingAbove: (id: string) => void;
   onAddChild: (id: string) => void;
   onAddParentSibling: (id: string) => void;
   onDelete: (id: string) => void;
   onToggleCollapsed: (id: string) => void;
+  onToggleMerge: (id: string) => void;
   breadcrumbMode: boolean;
   meaningWidth: number;
   onUpdateMeaningWidth: (width: number) => void;
@@ -32,11 +42,17 @@ interface SystemsTableRowProps {
     isFocused: boolean,
     applyFormatFn?: (format: any) => void,
     applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void,
-    selectedText?: string
+    selectedText?: string,
+    removeHyperlinkFn?: () => void,
+    isHyperlinkSelected?: boolean
   ) => void;
   workspaceId?: string;
   elementId?: string;
   isViewMode?: boolean;
+  isActive?: boolean; // When true, allows column resizing. When false, column resize is disabled.
+  onRowFocus?: (rowId: string | null) => void;
+  onCopyRow?: (rowId: string) => void;
+  onPasteRow?: (rowId: string) => void;
 }
 
 export function SystemsTableRow({
@@ -47,10 +63,12 @@ export function SystemsTableRow({
   onUpdateLevelWidth,
   onUpdate,
   onAddSibling,
+  onAddSiblingAbove,
   onAddChild,
   onAddParentSibling,
   onDelete,
   onToggleCollapsed,
+  onToggleMerge,
   breadcrumbMode,
   meaningWidth,
   onUpdateMeaningWidth,
@@ -58,12 +76,28 @@ export function SystemsTableRow({
   onCellFocusChange,
   workspaceId,
   elementId,
-  isViewMode = false
+  isViewMode = false,
+  isActive = true,
+  onRowFocus,
+  onCopyRow,
+  onPasteRow
 }: SystemsTableRowProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [isBottomBorderHovered, setIsBottomBorderHovered] = useState(false);
   const [isCellSelected, setIsCellSelected] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [colorPickerPosition, setColorPickerPosition] = useState({ x: 0, y: 0 });
+  const [hasCopiedRow, setHasCopiedRow] = useState(false);
+
+  // Check sessionStorage for copied row when hovering
+  useEffect(() => {
+    if (isHovered) {
+      const hasCopied = sessionStorage.getItem('copiedTableRow') !== null;
+      setHasCopiedRow(hasCopied);
+    }
+  }, [isHovered]);
   const rowRef = useRef<HTMLDivElement>(null);
+  const bidCellRef = useRef<HTMLDivElement>(null);
 
   const bidColumnWidth = getLevelWidth(level);
   const indentWidth = getIndentWidth(level);
@@ -117,6 +151,13 @@ export function SystemsTableRow({
   const handleCornerClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+
+    // Calculate position for color picker portal
+    if (!isCellSelected && bidCellRef.current) {
+      const rect = bidCellRef.current.getBoundingClientRect();
+      setColorPickerPosition({ x: rect.left, y: rect.bottom + 4 });
+    }
+
     setIsCellSelected(!isCellSelected);
     setShowColorPicker(!isCellSelected); // Show picker when selecting, hide when deselecting
   };
@@ -130,7 +171,7 @@ export function SystemsTableRow({
 
       // Check if clicking on the corner indicator, color picker, or collapse triangle
       const isCornerIndicator = target.closest('[title="Click to select cell for fill color"]');
-      const isColorPicker = target.closest('.absolute.left-0.top-full'); // Color picker container
+      const isColorPicker = target.closest('[data-color-picker]'); // Color picker container
       const isCollapseTriangle = target.closest('[title="Expand"]') || target.closest('[title="Collapse"]');
 
       // If clicking on corner indicator, color picker, or collapse triangle, don't deselect
@@ -169,12 +210,152 @@ export function SystemsTableRow({
           />
         )}
 
-        {/* Bid Column - Resizable */}
+        {/* Bid Column - Resizable (hidden when merged) */}
+        {!row.isMerged && (
+          <Resizable
+            size={{ width: bidColumnWidth, height: 'auto' }}
+            onResizeStop={handleResizeStop}
+            enable={{
+              right: isActive,
+              top: false,
+              bottom: false,
+              left: false,
+              topRight: false,
+              bottomRight: false,
+              bottomLeft: false,
+              topLeft: false,
+            }}
+            handleStyles={{
+              right: {
+                width: '4px',
+                right: '0',
+                cursor: 'col-resize',
+              },
+            }}
+            handleClasses={{
+              right: 'hover:bg-blue-400',
+            }}
+            className="flex-shrink-0"
+            style={{
+              backgroundColor: row.bidFillColor || 'white',
+              borderBottom: gridlines?.enabled
+                ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
+                : '1px solid #D1D5DB',
+              borderLeft: gridlines?.enabled
+                ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
+                : '1px solid #D1D5DB',
+              borderTop: gridlines?.enabled
+                ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
+                : '1px solid #D1D5DB',
+              boxShadow: isCellSelected ? 'inset 0 0 0 2px #3B82F6' : 'none',
+            }}
+          >
+            <div ref={bidCellRef} className="pl-1.5 pr-1 py-1.5 flex items-center relative" data-column-type="bid">
+              <div className="flex-1 relative">
+                <RichTextCell
+                  key={`${row.id}-${bidColumnWidth}`}
+                  value={row.bid}
+                  htmlValue={row.bidHtmlContent}
+                  onChange={(text, html) => onUpdate(row.id, { bid: text, bidHtmlContent: html })}
+                  placeholder="Bid"
+                  minHeight={ROW_MIN_HEIGHT}
+                  columnWidth={bidColumnWidth}
+                  onFocusChange={(isFocused, applyFormatFn, applyHyperlinkFn, selectedText, removeHyperlinkFn, isHyperlinkSelected) => {
+                    if (onCellFocusChange) {
+                      onCellFocusChange(row.id, 'bid', isFocused, applyFormatFn, applyHyperlinkFn, selectedText, removeHyperlinkFn, isHyperlinkSelected);
+                    }
+                    if (isFocused && onRowFocus) {
+                      onRowFocus(row.id);
+                    }
+                  }}
+                  workspaceId={workspaceId}
+                  elementId={`${elementId}-${row.id}-bid`}
+                  readOnly={isViewMode}
+                />
+
+                {/* Collapse/Expand Triangle - Vertex at bottom right corner, shows when row has children */}
+                {row.children.length > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onToggleCollapsed(row.id);
+                    }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className="absolute cursor-pointer hover:opacity-80 transition-opacity"
+                    title={row.collapsed ? "Expand" : "Collapse"}
+                    data-collapse-triangle="true"
+                    style={{
+                      bottom: '-6px', // Extend to align with cell bottom border (compensate for py-1.5 padding)
+                      right: '-4px', // Extend to align with cell edge (compensate for pr-1 padding)
+                      width: '12px',
+                      height: '12px',
+                      backgroundColor: row.collapsed ? '#3B82F6' : '#3B82F6',
+                      clipPath: row.collapsed
+                        ? 'polygon(0 0, 100% 100%, 0 100%)' // Right-pointing: vertex at right
+                        : 'polygon(0 0, 100% 0, 100% 100%)', // Down-pointing: vertex at bottom-right
+                      zIndex: 10,
+                      pointerEvents: 'auto',
+                    }}
+                  />
+                )}
+
+                {/* Corner Indicator - Click to select cell for fill color */}
+                {!isViewMode && (
+                  <div
+                    onClick={handleCornerClick}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className={`absolute top-0 right-0 w-3 h-3 cursor-pointer transition-opacity ${
+                      isHovered || isCellSelected ? 'opacity-100' : 'opacity-0'
+                    }`}
+                    style={{
+                      backgroundColor: isCellSelected ? '#3B82F6' : '#9CA3AF',
+                      clipPath: 'polygon(0 0, 100% 0, 100% 100%)',
+                    }}
+                    title="Click to select cell for fill color"
+                  />
+                )}
+              </div>
+
+              {/* Color Picker Popover - rendered via portal to appear above all content */}
+              {showColorPicker && !isViewMode && createPortal(
+                <div
+                  data-color-picker
+                  style={{
+                    position: 'fixed',
+                    left: colorPickerPosition.x,
+                    top: colorPickerPosition.y,
+                    zIndex: 9999
+                  }}
+                >
+                  <ColorPicker
+                    currentColor={row.bidFillColor}
+                    onColorSelect={handleColorSelect}
+                    onClose={() => {
+                      setShowColorPicker(false);
+                      setIsCellSelected(false);
+                    }}
+                  />
+                </div>,
+                document.body
+              )}
+            </div>
+          </Resizable>
+        )}
+
+        {/* Meaning Column - Resizable (full width when merged) */}
         <Resizable
-          size={{ width: bidColumnWidth, height: 'auto' }}
-          onResizeStop={handleResizeStop}
+          key={`meaning-${meaningWidth}-${indentWidth}-${bidColumnWidth}-${row.isMerged}`}
+          size={{ width: row.isMerged ? bidColumnWidth + actualMeaningWidth : actualMeaningWidth, height: 'auto' }}
+          onResizeStop={(_e: any, _direction: any, _ref: any, d: any) => {
+            const newWidth = meaningWidth + d.width;
+            onUpdateMeaningWidth(newWidth);
+          }}
           enable={{
-            right: true,
+            right: isActive,
             top: false,
             bottom: false,
             left: false,
@@ -193,9 +374,11 @@ export function SystemsTableRow({
           handleClasses={{
             right: 'hover:bg-blue-400',
           }}
-          className="flex-shrink-0"
+          className="pr-1 py-1.5 pl-2"
           style={{
-            backgroundColor: row.bidFillColor || 'white',
+            position: 'relative',
+            width: row.isMerged ? bidColumnWidth + actualMeaningWidth : actualMeaningWidth,
+            backgroundColor: 'white',
             borderBottom: gridlines?.enabled
               ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
               : '1px solid #D1D5DB',
@@ -205,130 +388,6 @@ export function SystemsTableRow({
             borderTop: gridlines?.enabled
               ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
               : '1px solid #D1D5DB',
-            boxShadow: isCellSelected ? 'inset 0 0 0 2px #3B82F6' : 'none',
-          }}
-        >
-          <div className="pl-1.5 pr-1 py-1.5 flex items-center relative" data-column-type="bid">
-            <div className="flex-1 relative">
-              <RichTextCell
-                key={`${row.id}-${bidColumnWidth}`}
-                value={row.bid}
-                htmlValue={row.bidHtmlContent}
-                onChange={(text, html) => onUpdate(row.id, { bid: text, bidHtmlContent: html })}
-                placeholder="Bid"
-                minHeight={20}
-                columnWidth={bidColumnWidth}
-                onFocusChange={(isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
-                  if (onCellFocusChange) {
-                    onCellFocusChange(row.id, 'bid', isFocused, applyFormatFn, applyHyperlinkFn, selectedText);
-                  }
-                }}
-                workspaceId={workspaceId}
-                elementId={`${elementId}-${row.id}-bid`}
-                readOnly={isViewMode}
-              />
-
-              {/* Collapse/Expand Triangle - Vertex at bottom right corner, shows when row has children */}
-              {row.children.length > 0 && (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onToggleCollapsed(row.id);
-                  }}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  className="absolute cursor-pointer hover:opacity-80 transition-opacity"
-                  title={row.collapsed ? "Expand" : "Collapse"}
-                  data-collapse-triangle="true"
-                  style={{
-                    bottom: '-6px', // Extend to align with cell bottom border (compensate for py-1.5 padding)
-                    right: '-4px', // Extend to align with cell edge (compensate for pr-1 padding)
-                    width: '12px',
-                    height: '12px',
-                    backgroundColor: row.collapsed ? '#3B82F6' : '#3B82F6',
-                    clipPath: row.collapsed
-                      ? 'polygon(0 0, 100% 100%, 0 100%)' // Right-pointing: vertex at right
-                      : 'polygon(0 0, 100% 0, 100% 100%)', // Down-pointing: vertex at bottom-right
-                    zIndex: 10,
-                    pointerEvents: 'auto',
-                  }}
-                />
-              )}
-
-              {/* Corner Indicator - Click to select cell for fill color */}
-              {!isViewMode && (
-                <div
-                  onClick={handleCornerClick}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  className={`absolute top-0 right-0 w-3 h-3 cursor-pointer transition-opacity ${
-                    isHovered || isCellSelected ? 'opacity-100' : 'opacity-0'
-                  }`}
-                  style={{
-                    backgroundColor: isCellSelected ? '#3B82F6' : '#9CA3AF',
-                    clipPath: 'polygon(0 0, 100% 0, 100% 100%)',
-                  }}
-                  title="Click to select cell for fill color"
-                />
-              )}
-            </div>
-
-            {/* Color Picker Popover */}
-            {showColorPicker && !isViewMode && (
-              <div className="absolute top-full left-0 mt-1 z-50">
-                <ColorPicker
-                  currentColor={row.bidFillColor}
-                  onColorSelect={handleColorSelect}
-                  onClose={() => {
-                    setShowColorPicker(false);
-                    setIsCellSelected(false);
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        </Resizable>
-
-        {/* Meaning Column - Resizable */}
-        <Resizable
-          key={`meaning-${meaningWidth}-${indentWidth}-${bidColumnWidth}`}
-          size={{ width: actualMeaningWidth, height: 'auto' }}
-          onResizeStop={(_e: any, _direction: any, _ref: any, d: any) => {
-            const newWidth = meaningWidth + d.width;
-            onUpdateMeaningWidth(newWidth);
-          }}
-          enable={{
-            right: true,
-            top: false,
-            bottom: false,
-            left: false,
-            topRight: false,
-            bottomRight: false,
-            bottomLeft: false,
-            topLeft: false,
-          }}
-          handleStyles={{
-            right: {
-              width: '4px',
-              right: '0',
-              cursor: 'col-resize',
-            },
-          }}
-          handleClasses={{
-            right: 'hover:bg-blue-400',
-          }}
-          className="pr-1 py-1.5 pl-2 relative"
-          style={{
-            width: actualMeaningWidth,
-            backgroundColor: 'white',
-            borderBottom: gridlines?.enabled
-              ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
-              : '1px solid #D1D5DB',
-            borderLeft: gridlines?.enabled
-              ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
-              : '1px solid #D1D5DB',
           }}
         >
           <RichTextCell
@@ -336,11 +395,14 @@ export function SystemsTableRow({
             htmlValue={row.meaningHtmlContent}
             onChange={(text, html) => onUpdate(row.id, { meaning: text, meaningHtmlContent: html })}
             placeholder="Meaning"
-            minHeight={20}
-            columnWidth={actualMeaningWidth}
-            onFocusChange={(isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {
+            minHeight={ROW_MIN_HEIGHT}
+            columnWidth={row.isMerged ? bidColumnWidth + actualMeaningWidth : actualMeaningWidth}
+            onFocusChange={(isFocused, applyFormatFn, applyHyperlinkFn, selectedText, removeHyperlinkFn, isHyperlinkSelected) => {
               if (onCellFocusChange) {
-                onCellFocusChange(row.id, 'meaning', isFocused, applyFormatFn, applyHyperlinkFn, selectedText);
+                onCellFocusChange(row.id, 'meaning', isFocused, applyFormatFn, applyHyperlinkFn, selectedText, removeHyperlinkFn, isHyperlinkSelected);
+              }
+              if (isFocused && onRowFocus) {
+                onRowFocus(row.id);
               }
             }}
             workspaceId={workspaceId}
@@ -348,19 +410,58 @@ export function SystemsTableRow({
             readOnly={isViewMode}
           />
 
-          {/* Action Buttons - Inside meaning column, extreme right */}
-          {isHovered && !isViewMode && (
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-2 bg-white/90 px-2 py-1 rounded shadow-sm">
+          {/* Bottom Border Hover Zone - invisible zone at right side of bottom border to trigger action buttons */}
+          {!isViewMode && (
+            <div
+              className="cursor-pointer"
+              style={{
+                position: 'absolute',
+                right: '0',
+                bottom: '0',
+                height: '12px',
+                width: '120px',
+                zIndex: 5
+              }}
+              onMouseEnter={() => setIsBottomBorderHovered(true)}
+              onMouseLeave={() => setIsBottomBorderHovered(false)}
+            />
+          )}
+
+          {/* Action Buttons - Bottom right of meaning column, only on bottom border hover */}
+          {isBottomBorderHovered && !isViewMode && (
+            <div
+              className="flex gap-1 bg-white px-1.5 py-0.5 rounded shadow-md border border-gray-200"
+              style={{
+                position: 'absolute',
+                right: '4px',
+                bottom: '0',
+                transform: 'translateY(50%)',
+                zIndex: 20
+              }}
+              onMouseEnter={() => setIsBottomBorderHovered(true)}
+              onMouseLeave={() => setIsBottomBorderHovered(false)}
+            >
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddSiblingAbove(row.id);
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="text-xs px-1.5 py-0.5 border border-gray-300 rounded hover:bg-gray-100"
+                title="Add Row Above"
+              >
+                +↑
+              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onAddSibling(row.id);
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="text-xs px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-100"
-                title="Add Row (+)"
+                className="text-xs px-1.5 py-0.5 border border-gray-300 rounded hover:bg-gray-100"
+                title="Add Row Below"
               >
-                +
+                +↓
               </button>
               <button
                 onClick={(e) => {
@@ -368,8 +469,8 @@ export function SystemsTableRow({
                   onAddChild(row.id);
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="text-xs px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-100"
-                title="Add Response (Shift +)"
+                className="text-xs px-1.5 py-0.5 border border-gray-300 rounded hover:bg-gray-100"
+                title="Add Response (Child Row)"
               >
                 ++
               </button>
@@ -380,7 +481,7 @@ export function SystemsTableRow({
                     onAddParentSibling(row.id);
                   }}
                   onMouseDown={(e) => e.stopPropagation()}
-                  className="text-xs px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-100"
+                  className="text-xs px-1.5 py-0.5 border border-gray-300 rounded hover:bg-gray-100"
                   title="Add Parent Row (-)"
                 >
                   -
@@ -389,10 +490,51 @@ export function SystemsTableRow({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  onToggleMerge(row.id);
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                className={`text-xs px-1.5 py-0.5 border rounded ${
+                  row.isMerged
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-gray-300 hover:bg-gray-100'
+                }`}
+                title={row.isMerged ? "Unmerge cells" : "Merge bid and meaning cells"}
+              >
+                ⇔
+              </button>
+              {onCopyRow && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCopyRow(row.id);
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="text-xs px-1.5 py-0.5 border border-gray-300 rounded hover:bg-gray-100"
+                  title="Copy row (Ctrl+Shift+C)"
+                >
+                  📋
+                </button>
+              )}
+              {onPasteRow && hasCopiedRow && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPasteRow(row.id);
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="text-xs px-1.5 py-0.5 border border-green-300 text-green-600 rounded hover:bg-green-50"
+                  title="Paste row below (Ctrl+Shift+V)"
+                >
+                  📥
+                </button>
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   onDelete(row.id);
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="text-xs px-2 py-0.5 border border-red-300 text-red-600 rounded hover:bg-red-50"
+                className="text-xs px-1.5 py-0.5 border border-red-300 text-red-600 rounded hover:bg-red-50"
                 title="Delete (x)"
               >
                 x
@@ -415,10 +557,12 @@ export function SystemsTableRow({
               onUpdateLevelWidth={onUpdateLevelWidth}
               onUpdate={onUpdate}
               onAddSibling={onAddSibling}
+              onAddSiblingAbove={onAddSiblingAbove}
               onAddChild={onAddChild}
               onAddParentSibling={onAddParentSibling}
               onDelete={onDelete}
               onToggleCollapsed={onToggleCollapsed}
+              onToggleMerge={onToggleMerge}
               breadcrumbMode={breadcrumbMode}
               meaningWidth={meaningWidth}
               onUpdateMeaningWidth={onUpdateMeaningWidth}
@@ -427,6 +571,10 @@ export function SystemsTableRow({
               workspaceId={workspaceId}
               elementId={elementId}
               isViewMode={isViewMode}
+              isActive={isActive}
+              onRowFocus={onRowFocus}
+              onCopyRow={onCopyRow}
+              onPasteRow={onPasteRow}
             />
           ))}
         </div>

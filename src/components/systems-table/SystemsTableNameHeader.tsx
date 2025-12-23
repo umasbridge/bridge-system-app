@@ -2,6 +2,12 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { RichTextCell } from './RichTextCell';
 
+// Total row height should be mygap (43px)
+// py-1.5 padding = 6px top + 6px bottom = 12px
+// borders = 1px top + 1px bottom = 2px
+// So content minHeight = 43 - 12 - 2 = 29px
+const ROW_MIN_HEIGHT = 29;
+
 interface GridlineOptions {
   enabled: boolean;
   color: string;
@@ -66,7 +72,7 @@ export function SystemsTableNameHeader({
           htmlValue={htmlContent}
           onChange={(text, html) => onUpdate(text, html)}
           placeholder="Table name"
-          minHeight={20}
+          minHeight={ROW_MIN_HEIGHT}
           columnWidth={meaningWidth}
           readOnly={isViewMode}
           onFocusChange={onFocusChange}

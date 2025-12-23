@@ -3,7 +3,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Checkbox } from '../ui/checkbox';
-import { X } from 'lucide-react';
+import { X, Copy, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { BaseElement } from '../element-look-and-feel/types';
 
 interface GridlineOptions {
@@ -22,6 +22,13 @@ interface SystemsTableFormatPanelProps {
   onUpdate: (updates: Partial<SystemsTableElement>) => void;
   onClose: () => void;
   onDelete?: () => void;
+  onCopy?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onMoveAlongsideUp?: () => void;
+  onMoveAlongsideDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
 }
 
 const PRESET_COLORS = [
@@ -29,7 +36,16 @@ const PRESET_COLORS = [
   '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#FFFFFF'
 ];
 
-export function SystemsTableFormatPanel({ element, onUpdate, onClose, onDelete }: SystemsTableFormatPanelProps) {
+export function SystemsTableFormatPanel({ element, onUpdate, onClose, onDelete, onCopy, onMoveUp, onMoveDown, onMoveAlongsideUp, onMoveAlongsideDown, canMoveUp = true, canMoveDown = true }: SystemsTableFormatPanelProps) {
+  const [copyFeedback, setCopyFeedback] = useState(false);
+
+  const handleCopy = () => {
+    if (onCopy) {
+      onCopy();
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
+    }
+  };
   const initialBorderWidth = element.borderWidth ?? 2;
   const [borderEnabled, setBorderEnabled] = useState(initialBorderWidth > 0);
   const [borderColor, setBorderColor] = useState(
@@ -274,6 +290,66 @@ export function SystemsTableFormatPanel({ element, onUpdate, onClose, onDelete }
         <Button onClick={handleApply} className="w-full">
           Apply
         </Button>
+
+        {/* Move Up/Down Buttons */}
+        {(onMoveUp || onMoveDown) && (
+          <div className="flex gap-2">
+            <Button
+              onClick={onMoveUp}
+              variant="outline"
+              className="flex-1"
+              disabled={!canMoveUp}
+            >
+              <ChevronUp className="h-4 w-4 mr-2" />
+              Move Up
+            </Button>
+            <Button
+              onClick={onMoveDown}
+              variant="outline"
+              className="flex-1"
+              disabled={!canMoveDown}
+            >
+              <ChevronDown className="h-4 w-4 mr-2" />
+              Move Down
+            </Button>
+          </div>
+        )}
+
+        {/* Move Alongside Buttons */}
+        {(onMoveAlongsideUp || onMoveAlongsideDown) && (
+          <div className="flex gap-2">
+            <Button
+              onClick={onMoveAlongsideUp}
+              variant="outline"
+              className="flex-1"
+              disabled={!canMoveUp}
+            >
+              <ArrowUpRight className="h-4 w-4 mr-2" />
+              Alongside Up
+            </Button>
+            <Button
+              onClick={onMoveAlongsideDown}
+              variant="outline"
+              className="flex-1"
+              disabled={!canMoveDown}
+            >
+              <ArrowDownRight className="h-4 w-4 mr-2" />
+              Alongside Down
+            </Button>
+          </div>
+        )}
+
+        {/* Copy Table Button */}
+        {onCopy && (
+          <Button
+            onClick={handleCopy}
+            variant="outline"
+            className={`w-full ${copyFeedback ? 'bg-green-50 border-green-500 text-green-700' : ''}`}
+          >
+            <Copy className="h-4 w-4 mr-2" />
+            {copyFeedback ? 'Table Copied!' : 'Copy Table'}
+          </Button>
+        )}
 
         {/* Delete Button */}
         {onDelete && (

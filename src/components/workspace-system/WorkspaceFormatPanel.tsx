@@ -23,6 +23,11 @@ const PRESET_FILL_COLORS = [
   '#D1FAE5', '#DBEAFE', '#EDE9FE', '#FCE7F3', 'transparent'
 ];
 
+// Default values matching WorkspaceEditor constants
+const DEFAULT_CANVAS_WIDTH = 794; // A4 width
+const DEFAULT_LEFT_MARGIN = 20;
+const DEFAULT_TOP_MARGIN = 20;
+
 export function WorkspaceFormatPanel({ workspace, onUpdate, onClose, onDelete }: WorkspaceFormatPanelProps) {
   const initialBorderWidth = workspace.borderWidth ?? 1;
   const [borderEnabled, setBorderEnabled] = useState(initialBorderWidth > 0 && workspace.borderColor !== 'transparent');
@@ -35,8 +40,10 @@ export function WorkspaceFormatPanel({ workspace, onUpdate, onClose, onDelete }:
   const [customBorderColor, setCustomBorderColor] = useState(borderColor);
   const [customBackgroundColor, setCustomBackgroundColor] = useState(backgroundColor);
 
-  const [canvasWidth, setCanvasWidth] = useState(workspace.canvasWidth || 794);
-  const [canvasHeight, setCanvasHeight] = useState(workspace.canvasHeight || 1123);
+  // Canvas width and margins
+  const [canvasWidth, setCanvasWidth] = useState(workspace.canvasWidth ?? DEFAULT_CANVAS_WIDTH);
+  const [leftMargin, setLeftMargin] = useState(workspace.leftMargin ?? DEFAULT_LEFT_MARGIN);
+  const [topMargin, setTopMargin] = useState(workspace.topMargin ?? DEFAULT_TOP_MARGIN);
 
   const handleBorderEnabledChange = (checked: boolean) => {
     setBorderEnabled(checked);
@@ -52,7 +59,8 @@ export function WorkspaceFormatPanel({ workspace, onUpdate, onClose, onDelete }:
       borderWidth: borderEnabled ? (borderWidth || 1) : 0,
       backgroundColor,
       canvasWidth,
-      canvasHeight
+      leftMargin,
+      topMargin
     });
     onClose();
   };
@@ -85,37 +93,6 @@ export function WorkspaceFormatPanel({ workspace, onUpdate, onClose, onDelete }:
       </div>
 
       <div className="p-4 space-y-6 overflow-y-auto">
-        {/* Canvas Size Section */}
-        <div className="space-y-3">
-          <Label>Canvas Size</Label>
-          <div className="space-y-2">
-            <div className="flex gap-2 items-center">
-              <Label className="w-16">Width</Label>
-              <Input
-                type="number"
-                value={canvasWidth}
-                onChange={(e) => setCanvasWidth(Number(e.target.value))}
-                className="flex-1"
-                min={800}
-                max={3000}
-              />
-              <span className="text-sm text-gray-500">px</span>
-            </div>
-            <div className="flex gap-2 items-center">
-              <Label className="w-16">Height</Label>
-              <Input
-                type="number"
-                value={canvasHeight}
-                onChange={(e) => setCanvasHeight(Number(e.target.value))}
-                className="flex-1"
-                min={600}
-                max={5000}
-              />
-              <span className="text-sm text-gray-500">px</span>
-            </div>
-          </div>
-        </div>
-
         {/* Background Color Section */}
         <div className="space-y-3">
           <Label>Background Color</Label>
@@ -231,6 +208,95 @@ export function WorkspaceFormatPanel({ workspace, onUpdate, onClose, onDelete }:
               </div>
             </>
           )}
+        </div>
+
+        {/* Canvas Width Section */}
+        <div className="space-y-3">
+          <Label>Workspace Width</Label>
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min="400"
+              max="1200"
+              step="10"
+              value={canvasWidth}
+              onChange={(e) => setCanvasWidth(Number(e.target.value))}
+              className="flex-1"
+            />
+            <Input
+              type="number"
+              value={canvasWidth}
+              onChange={(e) => setCanvasWidth(Number(e.target.value))}
+              className="w-20 h-8"
+              min="400"
+              max="1200"
+            />
+            <span className="text-sm text-gray-500">px</span>
+          </div>
+          <div className="flex gap-2">
+            {[600, 794, 900, 1000].map((width) => (
+              <Button
+                key={width}
+                onClick={() => setCanvasWidth(width)}
+                variant={canvasWidth === width ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1"
+              >
+                {width === 794 ? 'A4' : width}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {/* Margins Section */}
+        <div className="space-y-3">
+          <Label>Margins</Label>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-xs text-gray-500">Left Margin</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={leftMargin}
+                  onChange={(e) => setLeftMargin(Number(e.target.value))}
+                  className="flex-1 h-8"
+                  min="0"
+                  max="200"
+                />
+                <span className="text-sm text-gray-500">px</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-gray-500">Top Margin</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={topMargin}
+                  onChange={(e) => setTopMargin(Number(e.target.value))}
+                  className="flex-1 h-8"
+                  min="0"
+                  max="200"
+                />
+                <span className="text-sm text-gray-500">px</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {[10, 20, 40, 60].map((margin) => (
+              <Button
+                key={margin}
+                onClick={() => {
+                  setLeftMargin(margin);
+                  setTopMargin(margin);
+                }}
+                variant={leftMargin === margin && topMargin === margin ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1"
+              >
+                {margin}px
+              </Button>
+            ))}
+          </div>
         </div>
 
         {/* Apply Button */}

@@ -19,14 +19,19 @@ export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromT
   useEffect(() => {
     const loadWorkspaces = async () => {
       const allWorkspaces = await workspaceOperations.getAll();
-      setWorkspaces(allWorkspaces);
+      // Only show top-level systems as templates, not linked workspaces
+      const systems = allWorkspaces.filter(w => w.isSystem);
+      setWorkspaces(systems);
     };
     loadWorkspaces();
   }, []);
 
   const handleCreateFromTemplate = () => {
+    console.log('CreateSystemDialog handleCreateFromTemplate:', { selectedWorkspaceId, newName: newName.trim() });
     if (selectedWorkspaceId && newName.trim()) {
       onCreateFromTemplate(selectedWorkspaceId, newName.trim());
+    } else {
+      console.error('Missing required fields:', { selectedWorkspaceId, newName });
     }
   };
 
@@ -37,7 +42,7 @@ export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromT
 
   return (
     <div
-      className="absolute inset-0 flex items-center justify-center z-[100] pointer-events-auto"
+      className="absolute inset-0 flex items-center justify-center z-[9999] pointer-events-auto"
       style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
       onClick={handleBackdropClick}
       onMouseDown={(e) => e.stopPropagation()}

@@ -27,7 +27,7 @@ interface TextElementProps {
   onDelete: () => void;
   existingWorkspaces: string[];
   onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => void;
-  onFocusChange?: (isFocused: boolean, applyFormatFn?: (format: any) => void, applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void, selectedText?: string) => void;
+  onFocusChange?: (isFocused: boolean, applyFormatFn?: (format: any) => void, applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void, selectedText?: string, removeHyperlinkFn?: () => void, isHyperlinkSelected?: boolean) => void;
   readOnly?: boolean;
 }
 
@@ -48,7 +48,7 @@ export function TextElementComponent({
   const commitTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [hasTextSelection, setHasTextSelection] = useState(false);
   const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
-  const [savedSelection, setSavedSelection] = useState<Range | null>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
   const [selectedText, setSelectedText] = useState('');
   const [showHyperlinkMenu, setShowHyperlinkMenu] = useState(false);
   const [showTextFormatPanel, setShowTextFormatPanel] = useState(false);
@@ -60,6 +60,8 @@ export function TextElementComponent({
   const [imageResizing, setImageResizing] = useState(false);
   const imageResizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isHyperlinkSelected, setIsHyperlinkSelected] = useState(false);
+  const currentHyperlinkRef = useRef<HTMLAnchorElement | null>(null);
 
   // Images now use Supabase Storage URLs directly - no need for objectURL loading
 
@@ -176,9 +178,52 @@ export function TextElementComponent({
   // Notify parent when selected text changes (for side panel)
   useEffect(() => {
     if (isEditMode && onFocusChange) {
-      onFocusChange(true, applyFormat, applyHyperlink, selectedText);
+      onFocusChange(true, applyFormat, applyHyperlink, selectedText, removeHyperlink, isHyperlinkSelected);
     }
-  }, [selectedText]);
+  }, [selectedText, isHyperlinkSelected]);
+
+  // Listen for selection changes to detect hyperlink cursor position
+  useEffect(() => {
+    if (!isEditMode) return;
+
+    const handleSelectionChange = () => {
+      // Only process if this element is focused
+      const isThisElementFocused = document.activeElement === contentEditableRef.current ||
+        contentEditableRef.current?.contains(document.activeElement);
+      if (!isThisElementFocused) return;
+
+      const linkElement = checkIfHyperlinkSelected();
+      const hyperlinkSelected = linkElement !== null;
+
+      if (hyperlinkSelected !== isHyperlinkSelected) {
+        setIsHyperlinkSelected(hyperlinkSelected);
+        currentHyperlinkRef.current = linkElement;
+
+        // Notify parent about the hyperlink status change
+        if (onFocusChange) {
+          onFocusChange(true, applyFormat, applyHyperlink, selectedText, removeHyperlink, hyperlinkSelected);
+        }
+      }
+    };
+
+    // Run initial check when edit mode is enabled
+    setTimeout(() => {
+      const linkElement = checkIfHyperlinkSelected();
+      const hyperlinkSelected = linkElement !== null;
+      if (hyperlinkSelected !== isHyperlinkSelected) {
+        setIsHyperlinkSelected(hyperlinkSelected);
+        currentHyperlinkRef.current = linkElement;
+        if (onFocusChange) {
+          onFocusChange(true, applyFormat, applyHyperlink, selectedText, removeHyperlink, hyperlinkSelected);
+        }
+      }
+    }, 50);
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
+  }, [isEditMode, isHyperlinkSelected, selectedText, onFocusChange]);
 
   // Initialize content on mount
   useEffect(() => {
@@ -227,7 +272,8 @@ export function TextElementComponent({
   const saveSelection = () => {
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
-      return selection.getRangeAt(0);
+      // Clone the range to preserve it even when selection changes
+      return selection.getRangeAt(0).cloneRange();
     }
     return null;
   };
@@ -267,6 +313,61 @@ export function TextElementComponent({
       content: textContent,
       htmlContent: htmlContent
     });
+  };
+
+  // Check if cursor/selection is inside a hyperlink
+  const checkIfHyperlinkSelected = (): HTMLAnchorElement | null => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+
+    const range = selection.getRangeAt(0);
+    let node: Node | null = range.startContainer;
+
+    // Walk up the DOM tree to find an anchor element
+    while (node && node !== contentEditableRef.current) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const element = node as HTMLElement;
+        if (element.tagName === 'A' && (element.hasAttribute('data-workspace') || element.hasAttribute('data-workspace-link'))) {
+          return element as HTMLAnchorElement;
+        }
+      }
+      node = node.parentNode;
+    }
+
+    return null;
+  };
+
+  // Remove the hyperlink at the current cursor position
+  const removeHyperlink = () => {
+    if (!contentEditableRef.current) return;
+
+    const linkElement = currentHyperlinkRef.current || checkIfHyperlinkSelected();
+    if (!linkElement) return;
+
+    try {
+      // Get the link's text content
+      const textContent = linkElement.textContent || '';
+
+      // Create a text node with the link's content
+      const textNode = document.createTextNode(textContent);
+
+      // Replace the link with the text node
+      linkElement.parentNode?.replaceChild(textNode, linkElement);
+
+      // Commit the change
+      commitMutation();
+
+      // Clear hyperlink selection state
+      setIsHyperlinkSelected(false);
+      currentHyperlinkRef.current = null;
+
+      // Update parent about the change
+      if (onFocusChange && isEditMode) {
+        onFocusChange(true, applyFormat, applyHyperlink, selectedText, removeHyperlink, false);
+      }
+    } catch (error) {
+      console.error('Error removing hyperlink:', error);
+    }
   };
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
@@ -437,20 +538,27 @@ export function TextElementComponent({
     const items = e.clipboardData?.items;
     if (!items) return;
 
-    // Check if clipboard contains image files
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    // Check if clipboard contains text/HTML content FIRST
+    // When copying from Word/webpages, clipboard often has BOTH image and text - prefer text
+    const hasTextContent = e.clipboardData.getData('text/html') || e.clipboardData.getData('text/plain');
 
-      if (item.type.indexOf('image') !== -1) {
-        e.preventDefault(); // Prevent default paste behavior for images
+    // Only treat as image paste if there's an image but NO text content
+    // (i.e., user explicitly copied an image, not rich text that includes an image representation)
+    if (!hasTextContent) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
 
-        const file = item.getAsFile();
-        if (!file) continue;
+        if (item.type.indexOf('image') !== -1) {
+          e.preventDefault(); // Prevent default paste behavior for images
 
-        // Insert image using IndexedDB
-        await insertImageFromFile(file);
+          const file = item.getAsFile();
+          if (!file) continue;
 
-        return; // Only handle first image
+          // Insert image using IndexedDB
+          await insertImageFromFile(file);
+
+          return; // Only handle first image
+        }
       }
     }
 
@@ -605,12 +713,29 @@ export function TextElementComponent({
     }
   };
 
-  // Attach click listeners to images
+  // Attach click listeners to images and hyperlinks
   useEffect(() => {
     if (!contentEditableRef.current) return;
 
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
+
+      // Check if clicking on a hyperlink (support both attribute names for compatibility)
+      const link = target.closest('a[data-workspace]') || target.closest('a[data-workspace-link]');
+      if (link && onNavigateToWorkspace) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const workspaceName = link.getAttribute('data-workspace') || link.getAttribute('data-workspace-link');
+        const linkType = link.getAttribute('data-link-type') as 'comment' | 'split-view' | 'new-page';
+
+        if (workspaceName) {
+          const rect = link.getBoundingClientRect();
+          onNavigateToWorkspace(workspaceName, linkType || 'new-page', { x: rect.left, y: rect.bottom });
+        }
+        return;
+      }
+
       if (target.tagName === 'IMG') {
         handleImageClick(e);
       } else {
@@ -625,7 +750,7 @@ export function TextElementComponent({
     return () => {
       div.removeEventListener('click', handleClick);
     };
-  }, []);
+  }, [onNavigateToWorkspace]);
 
   // Image resize handlers
   const handleImageResizeStart = (e: React.MouseEvent, corner: string) => {
@@ -724,10 +849,19 @@ export function TextElementComponent({
     // When clicking inside to type, we're entering "edit mode"
     // The parent will handle clearing selection
 
-    // Notify parent that this element is focused and pass the applyFormat and applyHyperlink functions
-    if (onFocusChange) {
-      onFocusChange(true, applyFormat, applyHyperlink);
-    }
+    // Check if cursor is in a hyperlink (use setTimeout to let the selection update)
+    setTimeout(() => {
+      const linkElement = checkIfHyperlinkSelected();
+      const hyperlinkSelected = linkElement !== null;
+      setIsHyperlinkSelected(hyperlinkSelected);
+      currentHyperlinkRef.current = linkElement;
+
+      // Notify parent that this element is focused and pass the functions
+      if (onFocusChange) {
+        onFocusChange(true, applyFormat, applyHyperlink, selectedText, removeHyperlink, hyperlinkSelected);
+      }
+    }, 50);
+
     setIsEditMode(true);
   };
 
@@ -774,7 +908,7 @@ export function TextElementComponent({
       // Text is selected
       setHasTextSelection(true);
       setSelectedText(selectedText);
-      setSavedSelection(saveSelection());
+      savedSelectionRef.current = saveSelection();
       
       // Calculate position for the floating buttons
       const range = selection.getRangeAt(0);
@@ -989,7 +1123,7 @@ export function TextElementComponent({
     }
 
     // For other formats, try to use saved selection or current selection
-    let workingRange: Range | null = savedSelection;
+    let workingRange: Range | null = savedSelectionRef.current;
 
     // If no saved selection, try to get current selection
     if (!workingRange) {
@@ -1138,7 +1272,7 @@ export function TextElementComponent({
         selection.addRange(newRange);
 
         // Update saved selection for next format operation
-        setSavedSelection(newRange);
+        savedSelectionRef.current = newRange;
       }
 
       // Commit the mutation (normalize + history)
@@ -1149,10 +1283,30 @@ export function TextElementComponent({
   };
 
   const applyHyperlink = (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => {
-    if (!savedSelection || !contentEditableRef.current) return;
+    if (!contentEditableRef.current) return;
+
+    // If no saved selection, try to get current selection or select all content
+    if (!savedSelectionRef.current) {
+      contentEditableRef.current.focus();
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0 && selection.toString().length > 0) {
+        savedSelectionRef.current = selection.getRangeAt(0).cloneRange();
+      } else {
+        // No selection, select all content in the cell
+        const range = document.createRange();
+        range.selectNodeContents(contentEditableRef.current);
+        savedSelectionRef.current = range;
+        if (selection) {
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+    }
+
+    if (!savedSelectionRef.current) return;
 
     // Restore the selection
-    restoreSelection(savedSelection);
+    restoreSelection(savedSelectionRef.current);
     
     // Create an anchor element with workspace hyperlink
     const link = document.createElement('a');
@@ -1169,7 +1323,8 @@ export function TextElementComponent({
     };
     
     try {
-      const range = savedSelection;
+      const range = savedSelectionRef.current;
+      if (!range) return;
       const contents = range.extractContents();
       link.appendChild(contents);
       range.insertNode(link);

@@ -91,7 +91,7 @@ export function ShareDialog({ workspaceName, workspaceId, onClose }: ShareDialog
 
   return (
     <div
-      className="absolute inset-0 flex items-center justify-center z-[100] pointer-events-auto"
+      className="absolute inset-0 flex items-center justify-center z-[9999] pointer-events-auto"
       style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
       onClick={handleBackdropClick}
       onMouseDown={(e) => e.stopPropagation()}

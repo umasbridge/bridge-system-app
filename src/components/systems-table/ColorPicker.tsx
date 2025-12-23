@@ -20,7 +20,7 @@ export function ColorPicker({ currentColor, onColorSelect, onClose }: ColorPicke
   ];
 
   return (
-    <div className="absolute left-0 top-full mt-1 z-[100] bg-white border border-gray-300 rounded shadow-lg p-3 w-48">
+    <div className="bg-white border border-gray-300 rounded shadow-lg p-3 w-48">
       <div className="flex justify-between items-center mb-2">
         <span className="text-sm">Fill Color</span>
         <Button

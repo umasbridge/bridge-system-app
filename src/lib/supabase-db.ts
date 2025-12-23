@@ -39,7 +39,13 @@ export interface Workspace {
   backgroundColor?: string;
   canvasWidth?: number;
   canvasHeight?: number;
+  leftMargin?: number;
+  topMargin?: number;
   partners?: Partner[];
+  isSystem: boolean; // true = top-level system (created via button), false = linked workspace (created via hyperlink)
+  deletedAt?: number; // Timestamp when soft-deleted, undefined if not deleted
+  backupGroupId?: string; // Groups all workspaces belonging to the same backup
+  backupOf?: string; // References the original system workspace this backup was created from
 }
 
 export interface BaseElement {
@@ -130,7 +136,13 @@ function workspaceFromRow(row: WorkspaceRow): Workspace {
     backgroundColor: row.background_color || undefined,
     canvasWidth: row.canvas_width || undefined,
     canvasHeight: row.canvas_height || undefined,
+    leftMargin: row.left_margin ?? undefined,
+    topMargin: row.top_margin ?? undefined,
     partners: row.partners || undefined,
+    isSystem: row.is_system ?? true, // Default to true for backward compatibility
+    deletedAt: row.deleted_at ? new Date(row.deleted_at).getTime() : undefined,
+    backupGroupId: row.backup_group_id || undefined,
+    backupOf: row.backup_of || undefined,
   };
 }
 
@@ -297,7 +309,12 @@ async function getCurrentUserId(): Promise<string> {
 // =====================
 
 export const workspaceOperations = {
-  async create(title: string): Promise<Workspace> {
+  /**
+   * Create a new workspace.
+   * @param title - The title of the workspace
+   * @param isSystem - true for top-level systems (created via button), false for linked workspaces (created via hyperlink)
+   */
+  async create(title: string, isSystem: boolean = true): Promise<Workspace> {
     const userId = await getCurrentUserId();
 
     const { data, error } = await supabase
@@ -310,6 +327,7 @@ export const workspaceOperations = {
         background_color: 'white',
         canvas_width: 794,
         canvas_height: 1123,
+        is_system: isSystem,
       })
       .select()
       .single();
@@ -322,7 +340,41 @@ export const workspaceOperations = {
     const { data, error } = await supabase
       .from('workspaces')
       .select('*')
+      .is('deleted_at', null)
       .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map(workspaceFromRow);
+  },
+
+  /**
+   * Get only top-level systems (created via "Create New System" button).
+   * Used by OpenSystemDialog to show only systems, not linked workspaces.
+   */
+  async getSystems(): Promise<Workspace[]> {
+    const { data, error } = await supabase
+      .from('workspaces')
+      .select('*')
+      .eq('is_system', true)
+      .is('deleted_at', null)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map(workspaceFromRow);
+  },
+
+  /**
+   * Get recently deleted systems (last 3).
+   * Used by ManageElements page to show retrievable systems.
+   */
+  async getDeletedSystems(): Promise<Workspace[]> {
+    const { data, error } = await supabase
+      .from('workspaces')
+      .select('*')
+      .eq('is_system', true)
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false })
+      .limit(3);
 
     if (error) throw error;
     return (data || []).map(workspaceFromRow);
@@ -333,6 +385,26 @@ export const workspaceOperations = {
       .from('workspaces')
       .select('*')
       .eq('id', id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return undefined; // Not found
+      throw error;
+    }
+    return data ? workspaceFromRow(data) : undefined;
+  },
+
+  /**
+   * Get a workspace by its title. Returns the most recently updated workspace with this title.
+   * Used by hyperlink navigation to find existing workspaces before creating new ones.
+   */
+  async getByTitle(title: string): Promise<Workspace | undefined> {
+    const { data, error } = await supabase
+      .from('workspaces')
+      .select('*')
+      .eq('title', title)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .single();
 
     if (error) {
@@ -353,6 +425,8 @@ export const workspaceOperations = {
     if (updates.backgroundColor !== undefined) dbUpdates.background_color = updates.backgroundColor;
     if (updates.canvasWidth !== undefined) dbUpdates.canvas_width = updates.canvasWidth;
     if (updates.canvasHeight !== undefined) dbUpdates.canvas_height = updates.canvasHeight;
+    if (updates.leftMargin !== undefined) dbUpdates.left_margin = updates.leftMargin;
+    if (updates.topMargin !== undefined) dbUpdates.top_margin = updates.topMargin;
     if (updates.partners !== undefined) dbUpdates.partners = updates.partners;
 
     const { error } = await supabase
@@ -368,6 +442,63 @@ export const workspaceOperations = {
     const { error } = await supabase
       .from('workspaces')
       .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  /**
+   * Soft delete a system (mark as deleted but keep in database).
+   * Only keeps the last 3 deleted systems - permanently deletes older ones.
+   */
+  async softDelete(id: string): Promise<void> {
+    // First, soft delete the system
+    const { error } = await supabase
+      .from('workspaces')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    // Now clean up old deleted systems - keep only the last 3
+    const userId = await getCurrentUserId();
+
+    // Get all deleted systems ordered by deleted_at desc
+    const { data: deletedSystems, error: fetchError } = await supabase
+      .from('workspaces')
+      .select('id, deleted_at')
+      .eq('user_id', userId)
+      .eq('is_system', true)
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false });
+
+    if (fetchError) throw fetchError;
+
+    // If more than 3 deleted systems, permanently delete the older ones
+    if (deletedSystems && deletedSystems.length > 3) {
+      const idsToDelete = deletedSystems.slice(3).map(s => s.id);
+
+      for (const deleteId of idsToDelete) {
+        // Permanently delete (elements are deleted via CASCADE)
+        const { error: deleteError } = await supabase
+          .from('workspaces')
+          .delete()
+          .eq('id', deleteId);
+
+        if (deleteError) {
+          console.error('Failed to permanently delete old system:', deleteId, deleteError);
+        }
+      }
+    }
+  },
+
+  /**
+   * Restore a soft-deleted system.
+   */
+  async restore(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('workspaces')
+      .update({ deleted_at: null })
       .eq('id', id);
 
     if (error) throw error;

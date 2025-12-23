@@ -14,8 +14,9 @@ export function OpenSystemDialog({ onClose, onOpenSystem }: OpenSystemDialogProp
 
   useEffect(() => {
     const loadWorkspaces = async () => {
-      const allWorkspaces = await workspaceOperations.getAll();
-      setWorkspaces(allWorkspaces);
+      // Only load top-level systems (not linked workspaces created via hyperlinks)
+      const systems = await workspaceOperations.getSystems();
+      setWorkspaces(systems);
     };
     loadWorkspaces();
   }, []);
@@ -33,7 +34,7 @@ export function OpenSystemDialog({ onClose, onOpenSystem }: OpenSystemDialogProp
 
   return (
     <div
-      className="absolute inset-0 flex items-center justify-center z-[100] pointer-events-auto"
+      className="absolute inset-0 flex items-center justify-center z-[9999] pointer-events-auto"
       style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
       onClick={handleBackdropClick}
       onMouseDown={(e) => e.stopPropagation()}

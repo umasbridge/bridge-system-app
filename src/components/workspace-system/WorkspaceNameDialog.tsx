@@ -73,7 +73,7 @@ export function WorkspaceNameDialog({ onConfirm, onCancel }: WorkspaceNameDialog
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] pointer-events-auto"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] pointer-events-auto"
       onClick={handleBackdropClick}
       onMouseDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}

@@ -11,6 +11,32 @@ import { saveSelectionAsBookmarks, restoreSelectionFromBookmarks } from '../../u
 import { normalizeNodeTree } from '../../utils/rte/normalizeNodeTree';
 import { sanitizePastedHTML, getClipboardContent } from '../../utils/rte/pasteSanitizer';
 
+/**
+ * Clean HTML content for display - removes Word/Office artifacts and unwraps paragraphs
+ */
+function cleanHtmlForDisplay(html: string): string {
+  if (!html) return html;
+
+  let cleaned = html;
+
+  // Remove Microsoft Office specific tags like <o:p></o:p>
+  cleaned = cleaned.replace(/<o:p[^>]*>.*?<\/o:p>/gi, '');
+  cleaned = cleaned.replace(/<\/?o:[^>]*>/gi, '');
+
+  // Remove empty span tags
+  cleaned = cleaned.replace(/<span[^>]*>\s*<\/span>/gi, '');
+
+  // Unwrap content from paragraph tags (replace <p>content</p> with just content)
+  cleaned = cleaned.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1');
+
+  // Strip leading/trailing whitespace entities
+  cleaned = cleaned
+    .replace(/^(?:&nbsp;|\u00A0|&#160;|\s|<br\s*\/?>)+/gi, '')
+    .replace(/(?:&nbsp;|\u00A0|&#160;|\s|<br\s*\/?>)+$/gi, '');
+
+  return cleaned.trim();
+}
+
 interface RichTextCellProps {
   value: string;
   htmlValue?: string;
@@ -22,7 +48,9 @@ interface RichTextCellProps {
     isFocused: boolean,
     applyFormatFn?: (format: any) => void,
     applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void,
-    selectedText?: string
+    selectedText?: string,
+    removeHyperlinkFn?: () => void,
+    isHyperlinkSelected?: boolean
   ) => void;
   workspaceId?: string;
   elementId?: string;
@@ -43,7 +71,7 @@ export function RichTextCell({
   const contentEditableRef = useRef<HTMLDivElement>(null);
   const [hasTextSelection, setHasTextSelection] = useState(false);
   const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
-  const [savedSelection, setSavedSelection] = useState<Range | null>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
   const [selectedText, setSelectedText] = useState('');
   const [showTextFormatPanel, setShowTextFormatPanel] = useState(false);
   const [showHyperlinkMenu, setShowHyperlinkMenu] = useState(false);
@@ -57,6 +85,8 @@ export function RichTextCell({
   const isClickingImage = useRef(false);
   const historyController = useRef<HistoryController>(createHistoryController());
   const commitTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isHyperlinkSelected, setIsHyperlinkSelected] = useState(false);
+  const currentHyperlinkRef = useRef<HTMLAnchorElement | null>(null);
 
   // Try to get workspace context, but don't fail if not available
   let workspaceContext: ReturnType<typeof useWorkspaceContext> | null = null;
@@ -209,7 +239,8 @@ export function RichTextCell({
   // Initialize content on mount
   useEffect(() => {
     if (contentEditableRef.current && !isInternalUpdate.current) {
-      const content = htmlValue || value || '';
+      // Clean HTML to remove Word/Office artifacts and extra whitespace
+      const content = cleanHtmlForDisplay(htmlValue || value || '');
       if (contentEditableRef.current.innerHTML !== content) {
         contentEditableRef.current.innerHTML = content;
       }
@@ -218,19 +249,67 @@ export function RichTextCell({
 
   // Restore selection when hyperlink menu or format panel opens
   useEffect(() => {
-    if ((showHyperlinkMenu || showTextFormatPanel) && savedSelection) {
+    if ((showHyperlinkMenu || showTextFormatPanel) && savedSelectionRef.current) {
       // Small delay to ensure the menu is rendered
       setTimeout(() => {
-        restoreSelection(savedSelection);
+        if (savedSelectionRef.current) {
+          restoreSelection(savedSelectionRef.current);
+        }
       }, 10);
     }
   }, [showHyperlinkMenu, showTextFormatPanel]);
+
+  // Listen for selection changes to detect hyperlink cursor position
+  useEffect(() => {
+    if (!isFocused) return;
+
+    const handleSelectionChange = () => {
+      // Only process if this cell is focused (check both activeElement and contains)
+      const isThisCellFocused = document.activeElement === contentEditableRef.current ||
+        contentEditableRef.current?.contains(document.activeElement);
+      if (!isThisCellFocused) return;
+
+      const linkElement = checkIfHyperlinkSelected();
+      const hyperlinkSelected = linkElement !== null;
+
+      if (hyperlinkSelected !== isHyperlinkSelected) {
+        setIsHyperlinkSelected(hyperlinkSelected);
+        currentHyperlinkRef.current = linkElement;
+
+        // Notify parent about the hyperlink status change
+        if (onFocusChange) {
+          const textToPass = selectedText || contentEditableRef.current?.textContent?.trim() || '';
+          onFocusChange(true, applyFormat, applyHyperlink, textToPass, removeHyperlink, hyperlinkSelected);
+        }
+      }
+    };
+
+    // Run initial check when focus is gained
+    setTimeout(() => {
+      const linkElement = checkIfHyperlinkSelected();
+      const hyperlinkSelected = linkElement !== null;
+      if (hyperlinkSelected !== isHyperlinkSelected) {
+        setIsHyperlinkSelected(hyperlinkSelected);
+        currentHyperlinkRef.current = linkElement;
+        if (onFocusChange) {
+          const textToPass = selectedText || contentEditableRef.current?.textContent?.trim() || '';
+          onFocusChange(true, applyFormat, applyHyperlink, textToPass, removeHyperlink, hyperlinkSelected);
+        }
+      }
+    }, 50);
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
+  }, [isFocused, isHyperlinkSelected, selectedText, onFocusChange]);
 
   // Save and restore selection
   const saveSelection = () => {
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
-      return selection.getRangeAt(0);
+      // Clone the range to preserve it even when selection changes
+      return selection.getRangeAt(0).cloneRange();
     }
     return null;
   };
@@ -293,9 +372,9 @@ export function RichTextCell({
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    // Check if clicking on a hyperlink
+    // Check if clicking on a hyperlink (support both attribute names for compatibility)
     const target = e.target as HTMLElement;
-    const link = target.closest('a[data-workspace]');
+    const link = target.closest('a[data-workspace]') || target.closest('a[data-workspace-link]');
     if (link) {
       isClickingLink.current = true;
       // Clear the flag after a short delay
@@ -330,19 +409,21 @@ export function RichTextCell({
       setSelectedImage(null);
     }
 
-    // Check if a hyperlink was clicked
-    const link = target.closest('a[data-workspace]');
+    // Check if a hyperlink was clicked (support both attribute names for compatibility)
+    const link = target.closest('a[data-workspace]') || target.closest('a[data-workspace-link]');
 
     if (link && workspaceContext) {
       e.preventDefault();
       e.stopPropagation();
 
       // Hide format panel when clicking a link
+      // Set isFocused to false BEFORE calling onFocusChange to prevent handleTextSelect from re-triggering focus
+      setIsFocused(false);
       if (onFocusChange) {
         onFocusChange(false);
       }
 
-      const workspaceName = link.getAttribute('data-workspace');
+      const workspaceName = link.getAttribute('data-workspace') || link.getAttribute('data-workspace-link');
       const linkType = link.getAttribute('data-link-type') as 'comment' | 'split-view' | 'new-page';
 
       if (!workspaceName) return;
@@ -407,10 +488,20 @@ export function RichTextCell({
 
     setIsFocused(true);
 
-    // Notify parent that this cell is focused and pass the applyFormat and applyHyperlink functions
-    if (onFocusChange) {
-      onFocusChange(true, applyFormat, applyHyperlink, selectedText);
-    }
+    // Check if cursor is in a hyperlink (use setTimeout to let the selection update)
+    setTimeout(() => {
+      const linkElement = checkIfHyperlinkSelected();
+      const hyperlinkSelected = linkElement !== null;
+      setIsHyperlinkSelected(hyperlinkSelected);
+      currentHyperlinkRef.current = linkElement;
+
+      // Notify parent that this cell is focused and pass the applyFormat and applyHyperlink functions
+      // If no text is explicitly selected, pass the cell's full text content for hyperlink default
+      if (onFocusChange) {
+        const textToPass = selectedText || contentEditableRef.current?.textContent?.trim() || '';
+        onFocusChange(true, applyFormat, applyHyperlink, textToPass, removeHyperlink, hyperlinkSelected);
+      }
+    }, 0);
   };
 
   const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
@@ -448,20 +539,29 @@ export function RichTextCell({
   };
 
   const handleTextSelect = () => {
+    // Don't update selection state if clicking a hyperlink (navigation in progress)
+    if (isClickingLink.current) return;
+
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
 
     const selectedText = selection.toString();
-    
+
+    // Check if cursor is in a hyperlink
+    const linkElement = checkIfHyperlinkSelected();
+    const hyperlinkSelected = linkElement !== null;
+    setIsHyperlinkSelected(hyperlinkSelected);
+    currentHyperlinkRef.current = linkElement;
+
     if (selectedText.length > 0) {
       // Text is selected
       setHasTextSelection(true);
       setSelectedText(selectedText);
-      setSavedSelection(saveSelection());
+      savedSelectionRef.current = saveSelection();
 
       // Notify parent of updated selection text (even if cell is already focused)
       if (onFocusChange && isFocused) {
-        onFocusChange(true, applyFormat, applyHyperlink, selectedText);
+        onFocusChange(true, applyFormat, applyHyperlink, selectedText, removeHyperlink, hyperlinkSelected);
       }
 
       // Calculate position for the floating buttons
@@ -476,6 +576,11 @@ export function RichTextCell({
       if (!showTextFormatPanel && !showHyperlinkMenu) {
         setHasTextSelection(false);
       }
+      // Even when no text is selected, update parent about hyperlink status
+      if (onFocusChange && isFocused) {
+        const textToPass = contentEditableRef.current?.textContent?.trim() || '';
+        onFocusChange(true, applyFormat, applyHyperlink, textToPass, removeHyperlink, hyperlinkSelected);
+      }
     }
   };
 
@@ -483,18 +588,25 @@ export function RichTextCell({
     const items = e.clipboardData?.items;
     if (!items) return;
 
-    // Check if clipboard contains image files
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    // Check if clipboard contains text/HTML content FIRST
+    // When copying from Word/webpages, clipboard often has BOTH image and text - prefer text
+    const hasTextContent = e.clipboardData.getData('text/html') || e.clipboardData.getData('text/plain');
 
-      if (item.type.indexOf('image') !== -1) {
-        e.preventDefault(); // Prevent default paste behavior for images
+    // Only treat as image paste if there's an image but NO text content
+    // (i.e., user explicitly copied an image, not rich text that includes an image representation)
+    if (!hasTextContent) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
 
-        const file = item.getAsFile();
-        if (!file) continue;
+        if (item.type.indexOf('image') !== -1) {
+          e.preventDefault(); // Prevent default paste behavior for images
 
-        await insertImageFromFile(file);
-        return; // Only handle first image
+          const file = item.getAsFile();
+          if (!file) continue;
+
+          await insertImageFromFile(file);
+          return; // Only handle first image
+        }
       }
     }
 
@@ -874,7 +986,7 @@ export function RichTextCell({
       }
     }
 
-    let workingRange: Range | null = savedSelection;
+    let workingRange: Range | null = savedSelectionRef.current;
 
     if (!workingRange) {
       const selection = window.getSelection();
@@ -1017,7 +1129,7 @@ export function RichTextCell({
         selection.addRange(newRange);
 
         // Update saved selection for next format operation
-        setSavedSelection(newRange);
+        savedSelectionRef.current = newRange;
       }
 
       commitMutation();
@@ -1027,10 +1139,34 @@ export function RichTextCell({
   };
 
   const applyHyperlink = (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => {
-    if (!savedSelection || !contentEditableRef.current || !workspaceContext) return;
+    if (!contentEditableRef.current || !workspaceContext) {
+      return;
+    }
+
+    // If no saved selection, try to get current selection or select all content
+    if (!savedSelectionRef.current) {
+      contentEditableRef.current.focus();
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0 && selection.toString().length > 0) {
+        savedSelectionRef.current = selection.getRangeAt(0).cloneRange();
+      } else {
+        // No selection, select all content in the cell
+        const range = document.createRange();
+        range.selectNodeContents(contentEditableRef.current);
+        savedSelectionRef.current = range;
+        if (selection) {
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+    }
+
+    if (!savedSelectionRef.current) {
+      return;
+    }
 
     // Restore the selection
-    restoreSelection(savedSelection);
+    restoreSelection(savedSelectionRef.current);
     
     // Create a hyperlink element
     const link = document.createElement('a');
@@ -1102,7 +1238,8 @@ export function RichTextCell({
     
     // Wrap the selected text in the link
     try {
-      const range = savedSelection;
+      const range = savedSelectionRef.current;
+      if (!range) return;
       const contents = range.extractContents();
       link.appendChild(contents);
       range.insertNode(link);
@@ -1116,6 +1253,61 @@ export function RichTextCell({
       window.getSelection()?.removeAllRanges();
     } catch (error) {
       console.error('Error applying hyperlink:', error);
+    }
+  };
+
+  // Check if cursor/selection is inside a hyperlink
+  const checkIfHyperlinkSelected = (): HTMLAnchorElement | null => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+
+    const range = selection.getRangeAt(0);
+    let node: Node | null = range.startContainer;
+
+    // Walk up the DOM tree to find an anchor element
+    while (node && node !== contentEditableRef.current) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const element = node as HTMLElement;
+        if (element.tagName === 'A' && (element.hasAttribute('data-workspace') || element.hasAttribute('data-workspace-link'))) {
+          return element as HTMLAnchorElement;
+        }
+      }
+      node = node.parentNode;
+    }
+
+    return null;
+  };
+
+  // Remove the hyperlink at the current cursor position
+  const removeHyperlink = () => {
+    if (!contentEditableRef.current) return;
+
+    const linkElement = currentHyperlinkRef.current || checkIfHyperlinkSelected();
+    if (!linkElement) return;
+
+    try {
+      // Get the link's text content
+      const textContent = linkElement.textContent || '';
+
+      // Create a text node with the link's content
+      const textNode = document.createTextNode(textContent);
+
+      // Replace the link with the text node
+      linkElement.parentNode?.replaceChild(textNode, linkElement);
+
+      // Commit the change
+      commitMutation();
+
+      // Clear hyperlink selection state
+      setIsHyperlinkSelected(false);
+      currentHyperlinkRef.current = null;
+
+      // Update parent about the change
+      if (onFocusChange && isFocused) {
+        onFocusChange(true, applyFormat, applyHyperlink, selectedText, removeHyperlink, false);
+      }
+    } catch (error) {
+      console.error('Error removing hyperlink:', error);
     }
   };
 

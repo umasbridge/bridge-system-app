@@ -23,6 +23,19 @@ export function ResizableElement({
   const initialSize = useRef({ width: 0, height: 0 });
   const initialMousePos = useRef({ x: 0, y: 0 });
 
+  // Use refs to avoid stale closure issues in event handlers
+  const elementRef2 = useRef(element);
+  const actionsRef = useRef(actions);
+
+  // Keep refs updated with latest values
+  useEffect(() => {
+    elementRef2.current = element;
+  }, [element]);
+
+  useEffect(() => {
+    actionsRef.current = actions;
+  }, [actions]);
+
   const handleElementClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
 
@@ -102,14 +115,21 @@ export function ResizableElement({
     if (!isDragging || !containerRef.current) return;
 
     const containerRect = containerRef.current.getBoundingClientRect();
-    const newX = e.clientX - containerRect.left - dragOffset.x;
     const newY = e.clientY - containerRect.top - dragOffset.y;
 
-    actions.onUpdate({
+    // Use refs to get latest element and actions to avoid stale closure
+    const currentElement = elementRef2.current;
+    const currentActions = actionsRef.current;
+
+    // No horizontal movement allowed - X position is fixed (my_left_margin)
+    // Only track intended Y for reordering purposes
+    currentActions.onUpdate({
       position: {
-        x: Math.max(0, Math.min(newX, containerRect.width - element.size.width)),
-        y: Math.max(0, Math.min(newY, containerRect.height - element.size.height))
-      }
+        x: currentElement.position.x, // Keep current X - no horizontal movement allowed
+        y: currentElement.position.y // Keep current Y - vertical reordering handled on drag end
+      },
+      // Store the drag target Y for use in reordering calculation
+      _dragTargetY: Math.max(0, newY)
     });
   };
 
@@ -147,7 +167,7 @@ export function ResizableElement({
       const aspectRatio = initialSize.current.width / initialSize.current.height;
       const widthBasedHeight = newWidth / aspectRatio;
       const heightBasedWidth = newHeight * aspectRatio;
-      
+
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         newHeight = widthBasedHeight;
       } else {
@@ -155,7 +175,8 @@ export function ResizableElement({
       }
     }
 
-    actions.onUpdate({
+    // Use ref to get latest actions to avoid stale closure
+    actionsRef.current.onUpdate({
       size: {
         width: newWidth,
         height: newHeight
@@ -171,7 +192,8 @@ export function ResizableElement({
     setIsResizing(false);
     setResizeType(null);
 
-    actions.onInteractionEnd?.();
+    // Use ref to get latest actions to avoid stale closure
+    actionsRef.current.onInteractionEnd?.();
   };
 
   useEffect(() => {
@@ -262,44 +284,13 @@ export function ResizableElement({
         </Button>
       )}
 
-      {/* Resize Handles - Only visible when selected */}
+      {/* Resize Handle - Only right edge resize allowed (left margin is fixed) */}
       {isSelected && (
-        <>
-          {/* Top Border */}
-          <div
-            className="resize-handle absolute top-0 left-0 right-0 h-1 cursor-ns-resize"
-            style={{ marginTop: '-2px' }}
-            onMouseDown={(e) => handleResizeStart(e, 'height')}
-          />
-
-          {/* Bottom Border */}
-          <div
-            className="resize-handle absolute bottom-0 left-0 right-0 h-1 cursor-ns-resize"
-            style={{ marginBottom: '-2px' }}
-            onMouseDown={(e) => handleResizeStart(e, 'height')}
-          />
-
-          {/* Left Border */}
-          <div
-            className="resize-handle absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize"
-            style={{ marginLeft: '-2px' }}
-            onMouseDown={(e) => handleResizeStart(e, 'width')}
-          />
-
-          {/* Right Border */}
-          <div
-            className="resize-handle absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize"
-            style={{ marginRight: '-2px' }}
-            onMouseDown={(e) => handleResizeStart(e, 'width')}
-          />
-
-          {/* Bottom-Right Corner - Aspect Ratio Resize */}
-          <div
-            className="resize-handle absolute bottom-0 right-0 w-4 h-4 bg-blue-500 cursor-nwse-resize"
-            style={{ marginBottom: '-4px', marginRight: '-4px' }}
-            onMouseDown={(e) => handleResizeStart(e, 'both')}
-          />
-        </>
+        <div
+          className="resize-handle absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize"
+          style={{ marginRight: '-2px' }}
+          onMouseDown={(e) => handleResizeStart(e, 'width')}
+        />
       )}
     </div>
   );

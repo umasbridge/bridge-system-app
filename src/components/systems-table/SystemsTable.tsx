@@ -12,6 +12,7 @@ export interface RowData {
   meaningHtmlContent?: string;
   children: RowData[];
   collapsed?: boolean;
+  isMerged?: boolean;
 }
 
 interface GridlineOptions {
@@ -41,11 +42,14 @@ interface SystemsTableProps {
     isFocused: boolean,
     applyFormatFn?: (format: any) => void,
     applyHyperlinkFn?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void,
-    selectedText?: string
+    selectedText?: string,
+    removeHyperlinkFn?: () => void,
+    isHyperlinkSelected?: boolean
   ) => void;
   workspaceId?: string;
   elementId?: string;
   isViewMode?: boolean;
+  isActive?: boolean; // When true, allows column resizing. When false, column resize is disabled.
 }
 
 // Helper function to recursively collapse all rows that have children
@@ -80,7 +84,8 @@ export function SystemsTable({
   onCellFocusChange,
   workspaceId,
   elementId,
-  isViewMode = false
+  isViewMode = false,
+  isActive = true
 }: SystemsTableProps) {
   const [rows, setRows] = useState<RowData[]>(() => {
     // If initialRows are provided, collapse all rows with children by default
@@ -112,7 +117,105 @@ export function SystemsTable({
   const [nameHtmlContent, setNameHtmlContent] = useState<string | undefined>(initialNameHtmlContent);
   const [showName, setShowName] = useState<boolean>(initialShowName);
 
+  // Copy/paste state
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+  // Note: copiedRow is stored in sessionStorage for cross-table pasting
+
   const generateId = () => Math.random().toString(36).substring(7);
+
+  // Helper to find a row by ID
+  const findRowById = (rows: RowData[], id: string): RowData | null => {
+    for (const row of rows) {
+      if (row.id === id) return row;
+      if (row.children.length > 0) {
+        const found = findRowById(row.children, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  // Deep clone a row with new IDs
+  const cloneRowWithNewIds = (row: RowData): RowData => {
+    return {
+      ...row,
+      id: generateId(),
+      children: row.children.map(child => cloneRowWithNewIds(child))
+    };
+  };
+
+  // Copy the focused row - stores in sessionStorage for cross-table pasting
+  const copyRow = (rowId: string) => {
+    const row = findRowById(rows, rowId);
+    if (row) {
+      const rowCopy = JSON.parse(JSON.stringify(row));
+      sessionStorage.setItem('copiedTableRow', JSON.stringify(rowCopy));
+      console.log('[SystemsTable] Copied row to sessionStorage:', row.bid || '(empty bid)');
+    }
+  };
+
+  // Get copied row from sessionStorage
+  const getCopiedRow = (): RowData | null => {
+    const stored = sessionStorage.getItem('copiedTableRow');
+    if (stored) {
+      try {
+        return JSON.parse(stored) as RowData;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  // Helper to check if a row is blank (empty bid and meaning)
+  const isRowBlank = (row: RowData): boolean => {
+    const bidEmpty = !row.bid && !row.bidHtmlContent;
+    const meaningEmpty = !row.meaning && !row.meaningHtmlContent;
+    return bidEmpty && meaningEmpty && row.children.length === 0;
+  };
+
+  // Paste copied row - replaces target if blank, otherwise inserts below
+  // Reads from sessionStorage to allow cross-table pasting
+  const pasteRow = (targetRowId: string) => {
+    const copiedRow = getCopiedRow();
+    if (!copiedRow) return;
+
+    // Clear undo history on paste action
+    setHistory([]);
+    setShowUndoHighlight(false);
+    if (undoTimeoutId) {
+      clearTimeout(undoTimeoutId);
+      setUndoTimeoutId(null);
+    }
+
+    const targetRow = findRowById(rows, targetRowId);
+    const shouldReplace = targetRow && isRowBlank(targetRow);
+
+    const clonedRow = cloneRowWithNewIds(copiedRow);
+
+    const pasteRecursive = (rows: RowData[]): RowData[] => {
+      const index = rows.findIndex(row => row.id === targetRowId);
+      if (index !== -1) {
+        if (shouldReplace) {
+          // Replace the blank target row with cloned row (preserving the target's id for focus)
+          const replacementRow = { ...clonedRow, id: targetRowId };
+          return [...rows.slice(0, index), replacementRow, ...rows.slice(index + 1)];
+        } else {
+          // Insert cloned row after the target row
+          return [...rows.slice(0, index + 1), clonedRow, ...rows.slice(index + 1)];
+        }
+      }
+      return rows.map(row => ({
+        ...row,
+        children: pasteRecursive(row.children)
+      }));
+    };
+
+    const updatedRows = pasteRecursive(rows);
+    setRows(updatedRows);
+    onRowsChange?.(updatedRows);
+    console.log('[SystemsTable] Pasted row', shouldReplace ? 'replacing blank:' : 'after:', targetRowId);
+  };
 
   const saveToHistory = (currentRows: RowData[]) => {
     setHistory(prev => [...prev, JSON.parse(JSON.stringify(currentRows))]);
@@ -143,19 +246,35 @@ export function SystemsTable({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Undo: Ctrl/Cmd + Z
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
         undo();
+      }
+      // Copy row: Ctrl/Cmd + Shift + C (to not interfere with text copy)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+        if (focusedRowId) {
+          e.preventDefault();
+          copyRow(focusedRowId);
+        }
+      }
+      // Paste row: Ctrl/Cmd + Shift + V (to not interfere with text paste)
+      // Checks sessionStorage for cross-table pasting support
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'V') {
+        if (focusedRowId && getCopiedRow()) {
+          e.preventDefault();
+          pasteRow(focusedRowId);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [focusedRowId]);
 
   const updateRow = (
-    id: string, 
-    updates: Partial<Pick<RowData, 'bid' | 'bidHtmlContent' | 'bidFillColor' | 'meaning' | 'meaningHtmlContent'>>
+    id: string,
+    updates: Partial<Pick<RowData, 'bid' | 'bidHtmlContent' | 'bidFillColor' | 'meaning' | 'meaningHtmlContent' | 'isMerged'>>
   ) => {
     // Clear undo history on any edit action
     setHistory([]);
@@ -224,13 +343,13 @@ export function SystemsTable({
     // Clear undo history on add action
     setHistory([]);
     setShowUndoHighlight(false);
-    
+
     // Clear the timeout as well
     if (undoTimeoutId) {
       clearTimeout(undoTimeoutId);
       setUndoTimeoutId(null);
     }
-    
+
     const addRecursive = (rows: RowData[]): RowData[] => {
       const index = rows.findIndex(row => row.id === id);
       if (index !== -1) {
@@ -243,6 +362,41 @@ export function SystemsTable({
           children: []
         };
         return [...rows.slice(0, index + 1), newRow, ...rows.slice(index + 1)];
+      }
+      return rows.map(row => ({
+        ...row,
+        children: addRecursive(row.children)
+      }));
+    };
+    const updatedRows = addRecursive(rows);
+    setRows(updatedRows);
+    onRowsChange?.(updatedRows);
+  };
+
+  const addSiblingAboveRow = (id: string) => {
+    // Clear undo history on add action
+    setHistory([]);
+    setShowUndoHighlight(false);
+
+    // Clear the timeout as well
+    if (undoTimeoutId) {
+      clearTimeout(undoTimeoutId);
+      setUndoTimeoutId(null);
+    }
+
+    const addRecursive = (rows: RowData[]): RowData[] => {
+      const index = rows.findIndex(row => row.id === id);
+      if (index !== -1) {
+        const currentRow = rows[index];
+        const newRow: RowData = {
+          id: generateId(),
+          bid: '',
+          bidFillColor: currentRow.bidFillColor,
+          meaning: '',
+          children: []
+        };
+        // Insert at current index (before the current row)
+        return [...rows.slice(0, index), newRow, ...rows.slice(index)];
       }
       return rows.map(row => ({
         ...row,
@@ -391,6 +545,23 @@ export function SystemsTable({
     onRowsChange?.(updatedRows);
   };
 
+  const toggleMerge = (id: string) => {
+    const toggleRecursive = (rows: RowData[]): RowData[] => {
+      return rows.map(row => {
+        if (row.id === id) {
+          return { ...row, isMerged: !row.isMerged };
+        }
+        if (row.children.length > 0) {
+          return { ...row, children: toggleRecursive(row.children) };
+        }
+        return row;
+      });
+    };
+    const updatedRows = toggleRecursive(rows);
+    setRows(updatedRows);
+    onRowsChange?.(updatedRows);
+  };
+
   return (
     <div
       className="inline-block"
@@ -435,10 +606,12 @@ export function SystemsTable({
             onUpdateLevelWidth={updateLevelWidth}
             onUpdate={updateRow}
             onAddSibling={addSiblingRow}
+            onAddSiblingAbove={addSiblingAboveRow}
             onAddChild={addChildRow}
             onAddParentSibling={addParentSiblingRow}
             onDelete={deleteRow}
             onToggleCollapsed={toggleCollapsed}
+            onToggleMerge={toggleMerge}
             breadcrumbMode={breadcrumbMode}
             meaningWidth={meaningWidth}
             onUpdateMeaningWidth={updateMeaningWidth}
@@ -447,6 +620,10 @@ export function SystemsTable({
             workspaceId={workspaceId}
             elementId={elementId}
             isViewMode={isViewMode}
+            isActive={isActive}
+            onRowFocus={setFocusedRowId}
+            onCopyRow={copyRow}
+            onPasteRow={pasteRow}
           />
         ))}
       </div>

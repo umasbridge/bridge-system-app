@@ -26,12 +26,11 @@ const ALLOWED_ELEMENTS = new Set([
 
 /**
  * Allowed style properties
+ * Note: font-family is intentionally excluded so pasted text uses the app's default font
  */
 const ALLOWED_STYLES = new Set([
   'color',
   'background-color',
-  'font-family',
-  'font-size',
   'font-weight',
   'font-style',
   'text-decoration',

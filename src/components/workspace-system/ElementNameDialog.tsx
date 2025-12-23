@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { X } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { elementOperations, WorkspaceElement } from '../../lib/supabase-db';
 
 interface ElementNameDialogProps {
@@ -19,9 +20,12 @@ export function ElementNameDialog({ elementType, onConfirm, onCancel, onInsertEx
   const [existingElements, setExistingElements] = useState<WorkspaceElement[]>([]);
   const [selectedExistingElement, setSelectedExistingElement] = useState<WorkspaceElement | null>(null);
   const [hasDuplicateName, setHasDuplicateName] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Focus input when dialog mounts and blur any active element
+  // Blur any active element and clear selection when dialog first mounts
   useEffect(() => {
     // Blur any currently focused element
     if (document.activeElement instanceof HTMLElement) {
@@ -33,7 +37,10 @@ export function ElementNameDialog({ elementType, onConfirm, onCancel, onInsertEx
     if (selection) {
       selection.removeAllRanges();
     }
+  }, []); // Only run on mount
 
+  // Focus input when in create mode or when an existing element is selected
+  useEffect(() => {
     // Only focus if in create mode or when an existing element is selected
     if (mode === 'create' || (mode === 'existing' && selectedExistingElement)) {
       // Try focusing immediately
@@ -58,6 +65,31 @@ export function ElementNameDialog({ elementType, onConfirm, onCancel, onInsertEx
       };
     }
   }, [mode, selectedExistingElement]);
+
+  // Trap focus within the dialog - prevent focus from moving to elements behind
+  useEffect(() => {
+    const handleFocusIn = (e: FocusEvent) => {
+      const dialog = document.querySelector('[data-element-name-dialog]');
+      if (dialog && e.target && !dialog.contains(e.target as Node)) {
+        // Focus is trying to move outside the dialog - prevent it
+        e.preventDefault();
+        e.stopPropagation();
+        // Bring focus back to the input if available, otherwise the dialog itself
+        if (inputRef.current) {
+          inputRef.current.focus();
+        } else {
+          (dialog as HTMLElement).focus();
+        }
+      }
+    };
+
+    // Use capture phase to intercept before focus actually moves
+    document.addEventListener('focusin', handleFocusIn, true);
+
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn, true);
+    };
+  }, []);
 
   // Load existing elements of the same type from all workspaces (global library)
   useEffect(() => {
@@ -106,6 +138,17 @@ export function ElementNameDialog({ elementType, onConfirm, onCancel, onInsertEx
     }
   }, [name, existingElements, mode]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownOpen && dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [dropdownOpen]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (mode === 'create') {
@@ -130,23 +173,67 @@ export function ElementNameDialog({ elementType, onConfirm, onCancel, onInsertEx
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
-    e.preventDefault();
+    // Only close dialog if clicking directly on the backdrop (not on the dialog content)
+    const target = e.target as HTMLElement;
+    const dialog = document.querySelector('[data-element-name-dialog]');
+
+    // If the click is inside the dialog, don't do anything
+    if (dialog?.contains(target)) {
+      return;
+    }
+
+    // Native select dropdown options render outside the dialog in a browser overlay
+    // Don't close if clicking on select/option elements
+    if (target.tagName === 'SELECT' || target.tagName === 'OPTION') {
+      return;
+    }
+
+    // Only close if clicking directly on the backdrop div itself (e.target === e.currentTarget)
+    if (e.target !== e.currentTarget) {
+      return;
+    }
+
+    // Clicking on the backdrop itself - close the dialog
+    onCancel();
+  };
+
+  const handleBackdropMouseDown = (e: React.MouseEvent) => {
+    // Only stop propagation if clicking on the backdrop itself (not dialog content)
+    const target = e.target as HTMLElement;
+    const dialog = document.querySelector('[data-element-name-dialog]');
+
+    // Let events inside the dialog through
+    if (dialog?.contains(target)) {
+      return;
+    }
+
+    // Native select dropdown options render outside the dialog
+    if (target.tagName === 'SELECT' || target.tagName === 'OPTION') {
+      return;
+    }
+
+    // Only stop propagation if clicking directly on the backdrop div itself
+    if (e.target !== e.currentTarget) {
+      return;
+    }
+
     e.stopPropagation();
   };
 
-  return (
+  return createPortal(
     <div
-      className="absolute inset-0 flex items-center justify-center z-[100] pointer-events-auto"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+      className="fixed inset-0 flex items-center justify-center pointer-events-auto"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 9999 }}
       onClick={handleBackdropClick}
-      onMouseDown={(e) => e.stopPropagation()}
+      onMouseDown={handleBackdropMouseDown}
       onKeyDown={(e) => e.stopPropagation()}
     >
       <div
-        className="bg-white rounded-lg shadow-2xl w-[580px] max-h-[80vh] overflow-y-auto"
+        ref={dialogRef}
+        data-element-name-dialog
+        tabIndex={-1}
+        className="bg-white rounded-lg shadow-2xl w-[580px] max-h-[80vh] overflow-y-auto outline-none"
         style={{ position: 'relative' }}
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
         {/* Line 1: Title */}
@@ -189,22 +276,43 @@ export function ElementNameDialog({ elementType, onConfirm, onCancel, onInsertEx
                   <Label htmlFor="existing-element" className="text-base font-semibold text-gray-800">
                     Select Element
                   </Label>
-                  <select
-                    id="existing-element"
-                    value={selectedExistingElement?.id || ''}
-                    onChange={(e) => {
-                      const element = existingElements.find(el => el.id === e.target.value);
-                      setSelectedExistingElement(element || null);
-                    }}
-                    className="w-full h-12 rounded-md border-2 border-gray-300 bg-white px-4 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  >
-                    <option value="">Choose an element...</option>
-                    {existingElements.map(element => (
-                      <option key={element.id} value={element.id}>
-                        {element.name}
-                      </option>
-                    ))}
-                  </select>
+                  {/* Custom dropdown that renders inline (no portal issues) */}
+                  <div ref={dropdownRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setDropdownOpen(!dropdownOpen)}
+                      className="w-full h-12 rounded-md border-2 border-gray-300 bg-white px-4 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors flex items-center justify-between"
+                    >
+                      <span className={selectedExistingElement ? 'text-gray-900' : 'text-gray-500'}>
+                        {selectedExistingElement?.name || 'Choose an element...'}
+                      </span>
+                      <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {dropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-1 max-h-[300px] overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg z-50">
+                        {existingElements.map(element => (
+                          <div
+                            key={element.id}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setSelectedExistingElement(element);
+                              setDropdownOpen(false);
+                              // Focus the name input after a brief delay to let React render
+                              setTimeout(() => {
+                                inputRef.current?.focus();
+                              }, 50);
+                            }}
+                            className={`px-4 py-2 cursor-pointer hover:bg-blue-50 ${
+                              selectedExistingElement?.id === element.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                            }`}
+                          >
+                            {element.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -227,6 +335,10 @@ export function ElementNameDialog({ elementType, onConfirm, onCancel, onInsertEx
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  onKeyUp={(e) => e.stopPropagation()}
+                  onKeyPress={(e) => e.stopPropagation()}
+                  onInput={(e) => e.stopPropagation()}
                   placeholder={mode === 'existing' && selectedExistingElement ? 'Enter a new name...' : 'Enter a name...'}
                   className={`w-full h-12 px-4 text-base border-2 transition-colors ${
                     hasDuplicateName
@@ -268,6 +380,7 @@ export function ElementNameDialog({ elementType, onConfirm, onCancel, onInsertEx
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -3,7 +3,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Checkbox } from '../ui/checkbox';
-import { X } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { BaseElement } from '../element-look-and-feel/types';
 
 interface PdfElement extends BaseElement {
@@ -16,6 +16,12 @@ interface PdfElementFormatPanelProps {
   onUpdate: (updates: Partial<PdfElement>) => void;
   onClose: () => void;
   onDelete?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onMoveAlongsideUp?: () => void;
+  onMoveAlongsideDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
 }
 
 const PRESET_COLORS = [
@@ -28,7 +34,7 @@ const PRESET_FILL_COLORS = [
   '#D1FAE5', '#DBEAFE', '#EDE9FE', '#FCE7F3', 'transparent'
 ];
 
-export function PdfElementFormatPanel({ element, onUpdate, onClose, onDelete }: PdfElementFormatPanelProps) {
+export function PdfElementFormatPanel({ element, onUpdate, onClose, onDelete, onMoveUp, onMoveDown, onMoveAlongsideUp, onMoveAlongsideDown, canMoveUp = true, canMoveDown = true }: PdfElementFormatPanelProps) {
   const initialBorderWidth = element.borderWidth ?? 2;
   const [borderEnabled, setBorderEnabled] = useState(initialBorderWidth > 0 && element.borderColor !== 'transparent');
   const [borderColor, setBorderColor] = useState(
@@ -206,6 +212,54 @@ export function PdfElementFormatPanel({ element, onUpdate, onClose, onDelete }: 
         <Button onClick={handleApply} className="w-full">
           Apply
         </Button>
+
+        {/* Move Up/Down Buttons */}
+        {(onMoveUp || onMoveDown) && (
+          <div className="flex gap-2">
+            <Button
+              onClick={onMoveUp}
+              variant="outline"
+              className="flex-1"
+              disabled={!canMoveUp}
+            >
+              <ChevronUp className="h-4 w-4 mr-2" />
+              Move Up
+            </Button>
+            <Button
+              onClick={onMoveDown}
+              variant="outline"
+              className="flex-1"
+              disabled={!canMoveDown}
+            >
+              <ChevronDown className="h-4 w-4 mr-2" />
+              Move Down
+            </Button>
+          </div>
+        )}
+
+        {/* Move Alongside Buttons */}
+        {(onMoveAlongsideUp || onMoveAlongsideDown) && (
+          <div className="flex gap-2">
+            <Button
+              onClick={onMoveAlongsideUp}
+              variant="outline"
+              className="flex-1"
+              disabled={!canMoveUp}
+            >
+              <ArrowUpRight className="h-4 w-4 mr-2" />
+              Alongside Up
+            </Button>
+            <Button
+              onClick={onMoveAlongsideDown}
+              variant="outline"
+              className="flex-1"
+              disabled={!canMoveDown}
+            >
+              <ArrowDownRight className="h-4 w-4 mr-2" />
+              Alongside Down
+            </Button>
+          </div>
+        )}
 
         {/* Delete Button */}
         {onDelete && (

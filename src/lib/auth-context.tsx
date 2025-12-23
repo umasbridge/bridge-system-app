@@ -10,6 +10,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signInWithGoogle: () => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
+  verifyPassword: (password: string) => Promise<{ success: boolean; error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -69,8 +70,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  const verifyPassword = async (password: string): Promise<{ success: boolean; error: string | null }> => {
+    if (!user?.email) {
+      return { success: false, error: 'No user logged in' };
+    }
+
+    // Re-authenticate the user with their password to verify it
+    const { error } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password,
+    });
+
+    if (error) {
+      return { success: false, error: 'Incorrect password' };
+    }
+
+    return { success: true, error: null };
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithGoogle, signOut, verifyPassword }}>
       {children}
     </AuthContext.Provider>
   );
