@@ -7,6 +7,7 @@ import { WorkspaceNameDialog } from './WorkspaceNameDialog';
 import { BackupConfirmDialog } from './BackupConfirmDialog';
 import { workspaceOperations, imageOperations, elementOperations, Workspace as DBWorkspace } from '../../lib/supabase-db';
 import { createSystemBackup, buildWorkspaceHierarchy, WorkspaceHierarchyEntry } from '../../lib/backup-operations';
+import { getDisplayName } from '../../lib/workspace-utils';
 
 interface Workspace {
   id: string;
@@ -190,7 +191,7 @@ function CommentBox({ workspaceName, position, workspace, onClose, onMouseDown, 
             dangerouslySetInnerHTML={{ __html: workspace.titleHtmlContent }}
           />
         ) : (
-          <h2 className="text-sm font-medium select-none">{workspaceName}</h2>
+          <h2 className="text-sm font-medium select-none">{getDisplayName(workspaceName)}</h2>
         )}
         <Button
           onClick={(e) => {
@@ -746,7 +747,7 @@ export function WorkspaceSystem() {
                               dangerouslySetInnerHTML={{ __html: workspace.titleHtmlContent }}
                             />
                           ) : (
-                            <h2 className="text-sm font-medium select-none">{workspace.title}</h2>
+                            <h2 className="text-sm font-medium select-none">{getDisplayName(workspace.title)}</h2>
                           )}
                           <button
                             onClick={() => handleCloseWorkspace(workspace.id)}

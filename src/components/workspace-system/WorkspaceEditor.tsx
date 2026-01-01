@@ -18,6 +18,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { elementOperations, WorkspaceElement as DBWorkspaceElement, workspaceOperations, Workspace } from '../../lib/supabase-db';
 import { WorkspaceHierarchyEntry } from '../../lib/backup-operations';
 import { parseClipboardAsTable } from '../../utils/tableParsing';
+import { getDisplayName } from '../../lib/workspace-utils';
 
 // Use worker from public directory
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -725,9 +726,10 @@ export function WorkspaceEditor({
       if (workspace?.titleHtmlContent) {
         workspaceNameRef.current.innerHTML = workspace.titleHtmlContent;
       } else {
+        const displayName = getDisplayName(title);
         const currentContent = workspaceNameRef.current.textContent || '';
-        if (currentContent !== title) {
-          workspaceNameRef.current.textContent = title;
+        if (currentContent !== displayName) {
+          workspaceNameRef.current.textContent = displayName;
         }
       }
       // Apply saved text alignment
