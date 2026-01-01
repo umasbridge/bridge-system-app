@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { X, Bold, Italic, Underline, Strikethrough, Highlighter, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, IndentIncrease, IndentDecrease, Link2, Unlink, MessageSquare, Columns, FileText } from 'lucide-react';
+import { X, Bold, Italic, Underline, Strikethrough, Highlighter, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, IndentIncrease, IndentDecrease, Link2, Unlink } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
-import { Input } from '../ui/input';
+import { HyperlinkDialog } from './HyperlinkDialog';
+import { WorkspaceHierarchyEntry } from '../../lib/backup-operations';
 
 interface TextFormatPanelProps {
   position: { x: number; y: number };
@@ -16,7 +16,11 @@ interface TextFormatPanelProps {
   onDuplicateToWorkspace?: (newWorkspaceName: string, sourceWorkspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void;
   existingWorkspaces?: string[]; // All workspaces (for checking if name exists)
   linkedWorkspaces?: string[]; // Non-system workspaces only (for "Use Existing" list)
+  systemWorkspaces?: string[]; // System names (isSystem: true workspaces)
+  workspaceHierarchy?: Map<string, WorkspaceHierarchyEntry>; // Workspace parent-child relationships
   isSidePanel?: boolean;
+  namingPrefix?: string; // Auto-prefix for new workspace names (e.g., "System_Chapter_")
+  currentSystemName?: string | null; // Current system for filtering workspaces
 }
 
 export interface TextFormat {
@@ -51,7 +55,7 @@ const FONTS = [
 
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
 
-export function TextFormatPanel({ position, selectedText, onClose, onApply, onApplyHyperlink, onRemoveHyperlink, isHyperlinkSelected = false, onDuplicateToWorkspace, existingWorkspaces = [], linkedWorkspaces = [], isSidePanel = false }: TextFormatPanelProps) {
+export function TextFormatPanel({ position, selectedText, onClose, onApply, onApplyHyperlink, onRemoveHyperlink, isHyperlinkSelected = false, onDuplicateToWorkspace, existingWorkspaces = [], linkedWorkspaces = [], systemWorkspaces = [], workspaceHierarchy, isSidePanel = false, namingPrefix = '', currentSystemName = null }: TextFormatPanelProps) {
   const [format, setFormat] = useState<TextFormat>({
     color: '#000000',
     backgroundColor: 'transparent',
@@ -64,22 +68,8 @@ export function TextFormatPanel({ position, selectedText, onClose, onApply, onAp
     textAlign: 'left'
   });
 
-  const [showHyperlinkSection, setShowHyperlinkSection] = useState(false);
-  const [workspaceName, setWorkspaceName] = useState(selectedText || '');
-  const [linkType, setLinkType] = useState<'comment' | 'split-view' | 'new-page' | null>(null);
-  const [showWorkspaceChoiceDialog, setShowWorkspaceChoiceDialog] = useState(false);
-  const [showWorkspaceList, setShowWorkspaceList] = useState(false);
-  const [pendingWorkspaceName, setPendingWorkspaceName] = useState('');
-  const [pendingLinkType, setPendingLinkType] = useState<'comment' | 'split-view' | 'new-page' | null>(null);
-  const [workspaceFilter, setWorkspaceFilter] = useState('');
-  const [selectedExistingWorkspace, setSelectedExistingWorkspace] = useState('');
-
-  // Update workspace name when selected text changes
-  useEffect(() => {
-    if (selectedText) {
-      setWorkspaceName(selectedText);
-    }
-  }, [selectedText]);
+  // Hyperlink dialog state
+  const [showHyperlinkDialog, setShowHyperlinkDialog] = useState(false);
 
   const handleFormatChange = (newFormat: Partial<TextFormat>) => {
     const updatedFormat = { ...format, ...newFormat };
@@ -127,14 +117,8 @@ export function TextFormatPanel({ position, selectedText, onClose, onApply, onAp
         <div className="flex gap-1 flex-shrink-0 ml-2">
           {onApplyHyperlink && (
             <Button
-              onClick={() => {
-                // When opening hyperlink section, refresh workspace name from selected text
-                if (!showHyperlinkSection && selectedText) {
-                  setWorkspaceName(selectedText);
-                }
-                setShowHyperlinkSection(!showHyperlinkSection);
-              }}
-              variant={showHyperlinkSection ? "default" : "outline"}
+              onClick={() => setShowHyperlinkDialog(true)}
+              variant="outline"
               size="sm"
               className="h-8 gap-1"
               title="Add Hyperlink"
@@ -168,242 +152,26 @@ export function TextFormatPanel({ position, selectedText, onClose, onApply, onAp
         </div>
       </div>
 
-      {/* Hyperlink Section */}
-      {showHyperlinkSection && onApplyHyperlink && (
-        <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 space-y-3">
-          <div>
-            <Label className="text-xs mb-1 block">Workspace Name</Label>
-            <Input
-              type="text"
-              value={workspaceName}
-              onChange={(e) => setWorkspaceName(e.target.value)}
-              placeholder="Enter workspace name"
-              className="w-full"
-            />
-          </div>
-          <div>
-            <Label className="text-xs mb-1 block">Link Type</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                onClick={() => setLinkType('comment')}
-                variant={linkType === 'comment' ? 'default' : 'outline'}
-                size="sm"
-                className="w-full gap-2"
-              >
-                <MessageSquare className="h-4 w-4" />
-                Comment
-              </Button>
-              <Button
-                onClick={() => setLinkType('split-view')}
-                variant={linkType === 'split-view' ? 'default' : 'outline'}
-                size="sm"
-                className="w-full gap-2"
-              >
-                <Columns className="h-4 w-4" />
-                Split View
-              </Button>
-              <Button
-                onClick={() => setLinkType('new-page')}
-                variant={linkType === 'new-page' ? 'default' : 'outline'}
-                size="sm"
-                className="w-full gap-2"
-              >
-                <FileText className="h-4 w-4" />
-                New Page
-              </Button>
-            </div>
-          </div>
-          <Button
-            onClick={() => {
-              if (workspaceName.trim() && linkType) {
-                // Check if workspace with this name already exists
-                const workspaceExists = existingWorkspaces.some(
-                  ws => ws.toLowerCase() === workspaceName.trim().toLowerCase()
-                );
-
-                if (workspaceExists) {
-                  // Workspace exists, link directly to it
-                  onApplyHyperlink(workspaceName.trim(), linkType);
-                  setWorkspaceName('');
-                  setLinkType(null);
-                  setShowHyperlinkSection(false);
-                } else {
-                  // Workspace doesn't exist, show choice dialog
-                  setPendingWorkspaceName(workspaceName.trim());
-                  setPendingLinkType(linkType);
-                  setShowWorkspaceChoiceDialog(true);
-                }
-              }
-            }}
-            disabled={!workspaceName.trim() || !linkType}
-            className="w-full"
-          >
-            Apply Hyperlink
-          </Button>
-        </div>
-      )}
-
-      {/* Create Link Dialog - rendered via portal to escape transform context */}
-      {showWorkspaceChoiceDialog && createPortal(
-        <div
-          className="fixed inset-0 flex items-center justify-center pointer-events-auto"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 10000 }}
-          onClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <div
-            className="bg-white rounded-lg shadow-2xl w-[580px] max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            {/* Title */}
-            <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingTop: '48px', paddingBottom: '40px' }}>
-              <h2 style={{ fontSize: '30px', fontWeight: '800', textAlign: 'center', color: '#111827' }}>
-                Create Link
-              </h2>
-            </div>
-
-            {/* Subtitle - workspace name */}
-            <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingBottom: '24px' }}>
-              <p className="text-base text-gray-600 text-center">
-                Workspace "<span className="font-semibold">{pendingWorkspaceName}</span>" doesn't exist
-              </p>
-            </div>
-
-            {/* Mode Selection Buttons */}
-            <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingBottom: '40px' }}>
-              <div className="flex gap-4">
-                <Button
-                  type="button"
-                  onClick={() => setShowWorkspaceList(false)}
-                  className="flex-1 h-12 px-8 text-base font-medium"
-                  variant={!showWorkspaceList ? 'default' : 'outline'}
-                >
-                  Create New
-                </Button>
-                {onDuplicateToWorkspace && linkedWorkspaces.length > 0 && (
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setShowWorkspaceList(true);
-                      setSelectedExistingWorkspace('');
-                    }}
-                    className="flex-1 h-12 px-8 text-base font-medium"
-                    variant={showWorkspaceList ? 'default' : 'outline'}
-                  >
-                    Use Existing
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Content area */}
-            <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingBottom: '40px' }}>
-              {!showWorkspaceList ? (
-                /* Create New mode */
-                <div className="text-center text-gray-600 bg-gray-50 rounded-md text-base" style={{ paddingTop: '40px', paddingBottom: '40px' }}>
-                  A new empty workspace will be created
-                </div>
-              ) : (
-                /* Use Existing mode - Dropdown Select like OpenSystemDialog */
-                <div className="space-y-2">
-                  <Label className="text-base font-semibold text-gray-800">
-                    Select Workspace to Copy From
-                  </Label>
-                  <select
-                    value={selectedExistingWorkspace}
-                    onChange={(e) => setSelectedExistingWorkspace(e.target.value)}
-                    className="w-full h-12 rounded-md border-2 border-gray-300 bg-white px-4 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  >
-                    <option value="">Choose a workspace...</option>
-                    {linkedWorkspaces.map((ws, index) => (
-                      <option key={index} value={ws}>
-                        {ws}
-                      </option>
-                    ))}
-                  </select>
-                  {linkedWorkspaces.length === 0 && (
-                    <div className="text-center py-4">
-                      <p className="text-sm text-gray-500">No workspaces available</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="bg-gray-50 border-t border-gray-200 rounded-b-lg" style={{ paddingLeft: '48px', paddingRight: '48px', paddingTop: '32px', paddingBottom: '32px' }}>
-              <div className="flex gap-4 justify-end">
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setShowWorkspaceChoiceDialog(false);
-                    setShowWorkspaceList(false);
-                    setPendingWorkspaceName('');
-                    setPendingLinkType(null);
-                    setSelectedExistingWorkspace('');
-                  }}
-                  variant="outline"
-                  style={{ height: '48px', paddingLeft: '40px', paddingRight: '40px' }}
-                  className="text-base font-semibold"
-                >
-                  Cancel
-                </Button>
-                {!showWorkspaceList ? (
-                  /* Create New mode - Done button */
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      // Create new empty workspace
-                      if (pendingLinkType) {
-                        onApplyHyperlink?.(pendingWorkspaceName, pendingLinkType);
-                      }
-                      setShowWorkspaceChoiceDialog(false);
-                      setShowWorkspaceList(false);
-                      setWorkspaceName('');
-                      setLinkType(null);
-                      setShowHyperlinkSection(false);
-                      setPendingWorkspaceName('');
-                      setPendingLinkType(null);
-                    }}
-                    style={{ height: '48px', paddingLeft: '40px', paddingRight: '40px' }}
-                    className="text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    Done
-                  </Button>
-                ) : (
-                  /* Use Existing mode - Done button (duplicates selected workspace AND applies hyperlink) */
-                  <Button
-                    type="button"
-                    onClick={async () => {
-                      // Duplicate selected workspace to new name
-                      if (pendingLinkType && onDuplicateToWorkspace && selectedExistingWorkspace) {
-                        // First create the duplicate workspace (without navigation)
-                        await onDuplicateToWorkspace(pendingWorkspaceName, selectedExistingWorkspace, pendingLinkType);
-                        // Then apply the hyperlink to the selected text
-                        onApplyHyperlink?.(pendingWorkspaceName, pendingLinkType);
-                      }
-                      setShowWorkspaceChoiceDialog(false);
-                      setShowWorkspaceList(false);
-                      setWorkspaceName('');
-                      setLinkType(null);
-                      setShowHyperlinkSection(false);
-                      setPendingWorkspaceName('');
-                      setPendingLinkType(null);
-                      setSelectedExistingWorkspace('');
-                    }}
-                    disabled={!selectedExistingWorkspace}
-                    style={{ height: '48px', paddingLeft: '40px', paddingRight: '40px' }}
-                    className="text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
-                  >
-                    Done
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {/* Hyperlink Dialog */}
+      {showHyperlinkDialog && onApplyHyperlink && (
+        <HyperlinkDialog
+          selectedText={selectedText}
+          namingPrefix={namingPrefix}
+          existingWorkspaces={existingWorkspaces}
+          linkedWorkspaces={linkedWorkspaces}
+          systemWorkspaces={systemWorkspaces}
+          workspaceHierarchy={workspaceHierarchy}
+          onConfirm={(workspaceName, linkType) => {
+            onApplyHyperlink(workspaceName, linkType);
+            setShowHyperlinkDialog(false);
+          }}
+          onConfirmWithCopy={onDuplicateToWorkspace ? async (newName, sourceName, linkType) => {
+            await onDuplicateToWorkspace(newName, sourceName, linkType);
+            onApplyHyperlink(newName, linkType);
+            setShowHyperlinkDialog(false);
+          } : undefined}
+          onCancel={() => setShowHyperlinkDialog(false)}
+        />
       )}
 
       {/* Font Family */}

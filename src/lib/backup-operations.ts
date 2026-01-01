@@ -91,6 +91,74 @@ function extractHtmlFromRows(rows: RowData[]): string {
 }
 
 // =====================
+// WORKSPACE HIERARCHY
+// =====================
+
+/**
+ * Workspace hierarchy entry showing parent-child relationships based on hyperlinks.
+ */
+export interface WorkspaceHierarchyEntry {
+  workspaceId: string;
+  workspaceName: string;
+  isSystem: boolean;
+  children: string[]; // Names of workspaces this workspace links to (direct children only)
+}
+
+/**
+ * Build a map of workspace hierarchies by analyzing hyperlinks in all workspace elements.
+ * Returns a map from workspace name to its hierarchy entry.
+ */
+export async function buildWorkspaceHierarchy(
+  allWorkspaces: Workspace[]
+): Promise<Map<string, WorkspaceHierarchyEntry>> {
+  const hierarchy = new Map<string, WorkspaceHierarchyEntry>();
+
+  // Initialize entries for all non-backup workspaces
+  for (const ws of allWorkspaces) {
+    // Skip backup workspaces
+    if (ws.backupOf || ws.backupGroupId) continue;
+    if (!ws.title) continue;
+
+    hierarchy.set(ws.title, {
+      workspaceId: ws.id,
+      workspaceName: ws.title,
+      isSystem: ws.isSystem,
+      children: []
+    });
+  }
+
+  // For each workspace, find what it links to
+  for (const ws of allWorkspaces) {
+    // Skip backup workspaces
+    if (ws.backupOf || ws.backupGroupId) continue;
+    if (!ws.title) continue;
+
+    const entry = hierarchy.get(ws.title);
+    if (!entry) continue;
+
+    // Get all elements in this workspace
+    const elements = await elementOperations.getByWorkspaceId(ws.id);
+
+    // Extract hyperlinks from all elements
+    const linkedNames = new Set<string>();
+    for (const element of elements) {
+      const htmlContent = extractAllHtmlFromElement(element);
+      const links = extractHyperlinksFromHtml(htmlContent);
+      links.forEach(name => linkedNames.add(name));
+    }
+
+    // Add valid children (workspaces that exist in our hierarchy)
+    for (const name of linkedNames) {
+      if (hierarchy.has(name) && name !== ws.title) {
+        entry.children.push(name);
+      }
+    }
+  }
+
+  return hierarchy;
+}
+
+// =====================
 // WORKSPACE TRAVERSAL
 // =====================
 

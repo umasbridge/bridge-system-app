@@ -6,15 +6,16 @@ import { workspaceOperations, Workspace } from '../../lib/supabase-db';
 
 interface CreateSystemDialogProps {
   onClose: () => void;
-  onCreateFromScratch: () => void;
+  onCreateFromScratch: (systemName: string) => void;
   onCreateFromTemplate: (templateId: string, newName: string) => void;
 }
 
 export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromTemplate }: CreateSystemDialogProps) {
-  const [mode, setMode] = useState<'select' | 'template'>('select');
+  const [mode, setMode] = useState<'select' | 'scratch' | 'template'>('select');
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [newName, setNewName] = useState('');
+  const [scratchName, setScratchName] = useState('');
 
   useEffect(() => {
     const loadWorkspaces = async () => {
@@ -25,6 +26,12 @@ export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromT
     };
     loadWorkspaces();
   }, []);
+
+  const handleCreateFromScratch = () => {
+    if (scratchName.trim()) {
+      onCreateFromScratch(scratchName.trim());
+    }
+  };
 
   const handleCreateFromTemplate = () => {
     console.log('CreateSystemDialog handleCreateFromTemplate:', { selectedWorkspaceId, newName: newName.trim() });
@@ -65,7 +72,7 @@ export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromT
           <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingBottom: '40px' }}>
             <div className="flex flex-col gap-4">
               <Button
-                onClick={onCreateFromScratch}
+                onClick={() => setMode('scratch')}
                 className="h-16 text-base font-semibold"
                 variant="outline"
               >
@@ -78,6 +85,27 @@ export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromT
               >
                 Use Existing System as Template
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Create from Scratch - Enter Name */}
+        {mode === 'scratch' && (
+          <div style={{ paddingLeft: '48px', paddingRight: '48px', paddingBottom: '40px' }}>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-800">
+                  System Name
+                </Label>
+                <Input
+                  type="text"
+                  placeholder="Enter system name..."
+                  value={scratchName}
+                  onChange={(e) => setScratchName(e.target.value)}
+                  className="h-12 px-4 text-base border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
             </div>
           </div>
         )}
@@ -125,7 +153,7 @@ export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromT
         {/* Footer */}
         <div className="bg-gray-50 border-t border-gray-200 rounded-b-lg" style={{ paddingLeft: '48px', paddingRight: '48px', paddingTop: '32px', paddingBottom: '32px' }}>
           <div className="flex gap-4 justify-end">
-            {mode === 'template' && (
+            {(mode === 'scratch' || mode === 'template') && (
               <Button
                 type="button"
                 onClick={() => setMode('select')}
@@ -145,6 +173,17 @@ export function CreateSystemDialog({ onClose, onCreateFromScratch, onCreateFromT
             >
               Cancel
             </Button>
+            {mode === 'scratch' && (
+              <Button
+                type="button"
+                onClick={handleCreateFromScratch}
+                disabled={!scratchName.trim()}
+                style={{ height: '48px', paddingLeft: '40px', paddingRight: '40px' }}
+                className="text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Create
+              </Button>
+            )}
             {mode === 'template' && (
               <Button
                 type="button"

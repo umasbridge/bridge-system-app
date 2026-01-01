@@ -6,7 +6,7 @@ import { WorkspaceEditor } from './WorkspaceEditor';
 import { WorkspaceNameDialog } from './WorkspaceNameDialog';
 import { BackupConfirmDialog } from './BackupConfirmDialog';
 import { workspaceOperations, imageOperations, elementOperations, Workspace as DBWorkspace } from '../../lib/supabase-db';
-import { createSystemBackup } from '../../lib/backup-operations';
+import { createSystemBackup, buildWorkspaceHierarchy, WorkspaceHierarchyEntry } from '../../lib/backup-operations';
 
 interface Workspace {
   id: string;
@@ -39,6 +39,8 @@ interface WorkspaceContextType {
   openWorkspacePopup: (workspaceName: string, position?: { x: number; y: number }, fromPopup?: boolean) => void;
   openWorkspaceSplitView: (workspaceName: string, position?: { x: number; y: number }, fromPopup?: boolean) => void;
   openWorkspaceNewPage: (workspaceName: string, fromPopup?: boolean) => void;
+  currentSystemName: string | null;
+  namingPrefix: string;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | null>(null);
@@ -61,13 +63,15 @@ interface CommentBoxProps {
   isViewMode: boolean;
   existingWorkspaces: string[];
   linkedWorkspaces: string[];
+  systemWorkspaces: string[];
+  workspaceHierarchy?: Map<string, WorkspaceHierarchyEntry>;
   onNavigateToWorkspace: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }, fromPopup?: boolean) => void;
   onDuplicateToWorkspace?: (newWorkspaceName: string, sourceWorkspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void;
   onWorkspaceUpdate?: (updates: Partial<Workspace>) => void;
   zIndex?: number;
 }
 
-function CommentBox({ workspaceName, position, workspace, onClose, onMouseDown, onReadMore, isViewMode, existingWorkspaces, linkedWorkspaces, onNavigateToWorkspace, onDuplicateToWorkspace, onWorkspaceUpdate, zIndex = 100 }: CommentBoxProps) {
+function CommentBox({ workspaceName, position, workspace, onClose, onMouseDown, onReadMore, isViewMode, existingWorkspaces, linkedWorkspaces, systemWorkspaces, workspaceHierarchy, onNavigateToWorkspace, onDuplicateToWorkspace, onWorkspaceUpdate, zIndex = 100 }: CommentBoxProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
   const [availableHeight, setAvailableHeight] = useState<number | null>(null);
@@ -218,6 +222,8 @@ function CommentBox({ workspaceName, position, workspace, onClose, onMouseDown, 
           isViewMode={isViewMode}
           existingWorkspaces={existingWorkspaces}
           linkedWorkspaces={linkedWorkspaces}
+          systemWorkspaces={systemWorkspaces}
+          workspaceHierarchy={workspaceHierarchy}
           onNavigateToWorkspace={(name, type, pos) => onNavigateToWorkspace(name, type, pos, true)}
           onDuplicateToWorkspace={onDuplicateToWorkspace}
           onWorkspaceUpdate={onWorkspaceUpdate}
@@ -270,12 +276,18 @@ export function WorkspaceSystem() {
   const [isViewMode, setIsViewMode] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<NavigationState[]>([]);
   const [showBackupDialog, setShowBackupDialog] = useState(false);
+  // Workspace hierarchy for hyperlink dialog - shows parent-child relationships
+  const [workspaceHierarchy, setWorkspaceHierarchy] = useState<Map<string, WorkspaceHierarchyEntry>>(new Map());
 
   // Load workspaces from DB and handle URL-based workspace loading
   useEffect(() => {
     const loadWorkspaces = async () => {
       const dbWorkspaces = await workspaceOperations.getAll();
       setWorkspaces(dbWorkspaces);
+
+      // Build workspace hierarchy from hyperlinks
+      const hierarchy = await buildWorkspaceHierarchy(dbWorkspaces);
+      setWorkspaceHierarchy(hierarchy);
 
       // Check if there's a workspace ID in the URL
       if (workspaceIdFromUrl) {
@@ -591,9 +603,10 @@ export function WorkspaceSystem() {
       return;
     }
 
-    // Non-system workspace - just navigate to dashboard
+    // Non-system workspace - navigate back (to returnTo or dashboard)
     sessionStorage.removeItem('copiedTable');
-    navigate('/dashboard');
+    const returnTo = searchParams.get('returnTo');
+    navigate(returnTo || '/dashboard');
   };
 
   const handleBackupAndClose = () => {
@@ -616,16 +629,18 @@ export function WorkspaceSystem() {
       }
     }
 
-    // Navigate to dashboard
+    // Navigate back (to returnTo or dashboard)
     sessionStorage.removeItem('copiedTable');
-    navigate('/dashboard');
+    const returnTo = searchParams.get('returnTo');
+    navigate(returnTo || '/dashboard');
   };
 
   const handleCloseWithoutBackup = () => {
-    // Close dialog and navigate to dashboard without backup
+    // Close dialog and navigate back (to returnTo or dashboard) without backup
     setShowBackupDialog(false);
     sessionStorage.removeItem('copiedTable');
-    navigate('/dashboard');
+    const returnTo = searchParams.get('returnTo');
+    navigate(returnTo || '/dashboard');
   };
 
   const handleSwitchToEditMode = () => {
@@ -638,6 +653,44 @@ export function WorkspaceSystem() {
   const activeWorkspace = workspaces.find(ws => ws.id === activeWorkspaceId);
   const splitViewWorkspace = workspaces.find(ws => ws.id === splitViewWorkspaceId);
   const popupWorkspace = workspaces.find(ws => ws.id === popupWorkspaceId);
+
+  // Compute current system name and naming prefix
+  // If active workspace is a system, use its name directly
+  // If it's a linked workspace, extract the system prefix from its name
+  const getCurrentSystemName = (): string | null => {
+    if (!activeWorkspace?.title) return null;
+
+    if (activeWorkspace.isSystem) {
+      return activeWorkspace.title;
+    }
+
+    // For linked workspaces, the system name is the first part before underscore
+    // e.g., "MySystem_Openings" -> "MySystem"
+    const parts = activeWorkspace.title.split('_');
+    if (parts.length >= 2) {
+      return parts[0];
+    }
+
+    // Fallback: try to find parent system by checking which system this workspace belongs to
+    // by looking at the navigation history or matching prefix
+    const possibleSystemNames = workspaces
+      .filter(ws => ws.isSystem && ws.title)
+      .map(ws => ws.title);
+
+    for (const sysName of possibleSystemNames) {
+      if (activeWorkspace.title.startsWith(sysName + '_')) {
+        return sysName;
+      }
+    }
+
+    return null;
+  };
+
+  const currentSystemName = getCurrentSystemName();
+
+  // Naming prefix is the current workspace title + underscore
+  // This creates a hierarchy like: System_Chapter_SubChapter_
+  const namingPrefix = activeWorkspace?.title ? activeWorkspace.title + '_' : '';
 
   // Build list of all workspaces that should stay mounted (to preserve their state)
   // This includes the active workspace plus all workspaces in the navigation history
@@ -658,7 +711,9 @@ export function WorkspaceSystem() {
     },
     openWorkspaceNewPage: (workspaceName: string, fromPopup?: boolean) => {
       handleNavigateToWorkspace(workspaceName, 'new-page', undefined, fromPopup);
-    }
+    },
+    currentSystemName,
+    namingPrefix
   };
 
   return (
@@ -708,7 +763,9 @@ export function WorkspaceSystem() {
                         onTitleChange={(newTitle) => handleTitleChange(workspace.id, newTitle)}
                         onClose={() => handleCloseWorkspace(workspace.id)}
                         existingWorkspaces={workspaces.map(ws => ws.title)}
-                        linkedWorkspaces={workspaces.filter(ws => !ws.isSystem).map(ws => ws.title)}
+                        linkedWorkspaces={workspaces.filter(ws => !ws.isSystem && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+                        systemWorkspaces={workspaces.filter(ws => ws.isSystem && ws.title.trim() && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+                        workspaceHierarchy={workspaceHierarchy}
                         onNavigateToWorkspace={handleNavigateToWorkspace}
                         onDuplicateToWorkspace={handleDuplicateToWorkspace}
                         isViewMode={isViewMode}
@@ -722,14 +779,16 @@ export function WorkspaceSystem() {
                   {/* Split view should look exactly like the main workspace - with centered editable title and all controls */}
                   {isActive && splitViewWorkspaceId && splitViewWorkspace && (
                     <div className="w-1/2 pl-4 h-full">
-                      <div className="bg-white border-2 border-gray-300 rounded-sm shadow-lg relative flex flex-col h-full overflow-hidden" style={{ width: `${splitViewWorkspace.canvasWidth || 794}px`, maxHeight: '100%' }}>
+                      <div className="bg-white border-2 border-gray-300 rounded-sm shadow-lg relative flex flex-col h-full overflow-hidden" style={{ width: `${splitViewWorkspace.canvasWidth || 794}px`, maxWidth: '100%', maxHeight: '100%' }}>
                       <WorkspaceEditor
                         workspaceId={splitViewWorkspace.id}
                         initialTitle={splitViewWorkspace.title}
                         onTitleChange={(newTitle) => handleTitleChange(splitViewWorkspace.id, newTitle)}
                         onClose={() => setSplitViewWorkspaceId(null)}
                         existingWorkspaces={workspaces.map(ws => ws.title)}
-                        linkedWorkspaces={workspaces.filter(ws => !ws.isSystem).map(ws => ws.title)}
+                        linkedWorkspaces={workspaces.filter(ws => !ws.isSystem && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+                        systemWorkspaces={workspaces.filter(ws => ws.isSystem && ws.title.trim() && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+                        workspaceHierarchy={workspaceHierarchy}
                         onNavigateToWorkspace={handleNavigateToWorkspace}
                         onDuplicateToWorkspace={handleDuplicateToWorkspace}
                         onWorkspaceUpdate={(updates) => handleWorkspaceUpdate(splitViewWorkspace.id, updates)}
@@ -743,6 +802,13 @@ export function WorkspaceSystem() {
               );
             })}
           </>
+        ) : workspaceIdFromUrl ? (
+          // Show loading state when we have a workspace ID from URL but workspaces haven't loaded yet
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-gray-500 mb-4">Loading workspace...</p>
+            </div>
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center">
@@ -802,7 +868,9 @@ export function WorkspaceSystem() {
               }}
               isViewMode={isViewMode}
               existingWorkspaces={workspaces.map(ws => ws.title)}
-              linkedWorkspaces={workspaces.filter(ws => !ws.isSystem).map(ws => ws.title)}
+              linkedWorkspaces={workspaces.filter(ws => !ws.isSystem && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+              systemWorkspaces={workspaces.filter(ws => ws.isSystem && ws.title.trim() && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+              workspaceHierarchy={workspaceHierarchy}
               onNavigateToWorkspace={handleNavigateToWorkspace}
               onDuplicateToWorkspace={handleDuplicateToWorkspace}
               onWorkspaceUpdate={(updates) => handleWorkspaceUpdate(popup.workspaceId, updates)}

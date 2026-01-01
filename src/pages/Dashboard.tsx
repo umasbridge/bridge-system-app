@@ -24,8 +24,44 @@ export function Dashboard() {
     navigate('/login');
   };
 
-  const handleCreateFromScratch = async () => {
-    const newWorkspace = await workspaceOperations.create('');
+  const handleCreateFromScratch = async (systemName: string) => {
+    // Create workspace with the given name as a system
+    const newWorkspace = await workspaceOperations.create(systemName, true);
+
+    // Set the title HTML content to display the name properly
+    await workspaceOperations.update(newWorkspace.id, {
+      titleHtmlContent: `<span style="font-weight: 700">${systemName}</span>`
+    });
+
+    // Auto-create TOC table element with initial rows
+    const initialRows = [
+      {
+        id: crypto.randomUUID(),
+        bid: '',
+        bidHtmlContent: '',
+        meaning: '',
+        meaningHtmlContent: '',
+        children: []
+      }
+    ];
+
+    const tocElement = {
+      id: crypto.randomUUID(),
+      workspaceId: newWorkspace.id,
+      type: 'systems-table',
+      name: `${systemName}_TOC`,
+      position: { x: 50, y: 50 },
+      size: { width: 800, height: 400 },
+      zIndex: 1,
+      showName: true,
+      nameHtmlContent: `<span style="font-weight: 700">Table of Contents</span>`,
+      initialRows: initialRows,
+      meaningWidth: 600,
+      levelWidths: { 0: 80 },
+      gridlines: { enabled: false, color: '#D1D5DB', width: 1 }
+    };
+    await elementOperations.create(tocElement as any);
+
     setShowCreateDialog(false);
     navigate(`/workspace/${newWorkspace.id}?mode=edit`);
   };

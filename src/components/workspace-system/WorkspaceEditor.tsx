@@ -13,8 +13,10 @@ import { PdfElementFormatPanel } from './PdfElementFormatPanel';
 import { WorkspaceFormatPanel } from './WorkspaceFormatPanel';
 import { ElementNameDialog } from './ElementNameDialog';
 import { ShareDialog } from './ShareDialog';
+import { useWorkspaceContext } from './WorkspaceSystem';
 import * as pdfjsLib from 'pdfjs-dist';
 import { elementOperations, WorkspaceElement as DBWorkspaceElement, workspaceOperations, Workspace } from '../../lib/supabase-db';
+import { WorkspaceHierarchyEntry } from '../../lib/backup-operations';
 import { parseClipboardAsTable } from '../../utils/tableParsing';
 
 // Use worker from public directory
@@ -68,6 +70,8 @@ interface WorkspaceEditorProps {
   onClose?: () => void;
   existingWorkspaces?: string[];
   linkedWorkspaces?: string[]; // Non-system workspaces only
+  systemWorkspaces?: string[]; // System names (isSystem: true workspaces)
+  workspaceHierarchy?: Map<string, WorkspaceHierarchyEntry>; // Workspace parent-child relationships from hyperlinks
   onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => void;
   onDuplicateToWorkspace?: (newWorkspaceName: string, sourceWorkspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void;
   hideControls?: boolean;
@@ -159,6 +163,8 @@ export function WorkspaceEditor({
   onClose,
   existingWorkspaces = [],
   linkedWorkspaces = [],
+  systemWorkspaces = [],
+  workspaceHierarchy,
   onNavigateToWorkspace,
   onDuplicateToWorkspace,
   hideControls = false,
@@ -169,6 +175,16 @@ export function WorkspaceEditor({
   forceTitleBar = false,
   onWorkspaceUpdate
 }: WorkspaceEditorProps) {
+  // Get naming context for auto-prefix
+  let workspaceContext: { namingPrefix: string; currentSystemName: string | null } | null = null;
+  try {
+    workspaceContext = useWorkspaceContext();
+  } catch {
+    // Context not available (used outside WorkspaceSystem)
+  }
+  const namingPrefix = workspaceContext?.namingPrefix || '';
+  const currentSystemName = workspaceContext?.currentSystemName || null;
+
   const [title, setTitle] = useState(initialTitle);
   const [elements, setElements] = useState<WorkspaceElement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -2744,7 +2760,11 @@ export function WorkspaceEditor({
               onDuplicateToWorkspace={onDuplicateToWorkspace}
               existingWorkspaces={existingWorkspaces}
               linkedWorkspaces={linkedWorkspaces}
+              systemWorkspaces={systemWorkspaces}
+              workspaceHierarchy={workspaceHierarchy}
               isSidePanel={true}
+              namingPrefix={namingPrefix}
+              currentSystemName={currentSystemName}
             />
           </div>
         )}
@@ -2785,7 +2805,11 @@ export function WorkspaceEditor({
               onDuplicateToWorkspace={onDuplicateToWorkspace}
               existingWorkspaces={existingWorkspaces}
               linkedWorkspaces={linkedWorkspaces}
+              systemWorkspaces={systemWorkspaces}
+              workspaceHierarchy={workspaceHierarchy}
               isSidePanel={true}
+              namingPrefix={namingPrefix}
+              currentSystemName={currentSystemName}
             />
           </div>
         )}
