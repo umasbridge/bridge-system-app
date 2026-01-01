@@ -1980,52 +1980,63 @@ export function WorkspaceEditor({
   };
 
   // Callback for table height changes from ResizeObserver
-  // Updates the height AND repositions elements below to maintain consistent spacing
+  // Updates the height AND repositions ALL elements below to maintain consistent spacing
   const handleTableHeightChange = useCallback((elementId: string, height: number) => {
     setElements(prevElements => {
       const element = prevElements.find(el => el.id === elementId);
       if (!element || element.size.height === height) return prevElements;
 
       const width = element.size.width;
-      const elementBottom = element.position.y + height;
       const gap = 20; // Standard gap between elements
-      const maxGap = 40; // Maximum allowed gap before pulling up
 
       // Update the changed element's height in database
       elementOperations.update(elementId, { size: { width, height } });
 
-      // Find elements that are below this element (by y position)
-      // and check if they need to be repositioned
-      const updatedElements = prevElements.map(el => {
+      // First, update the changed element's height
+      let updatedElements = prevElements.map(el => {
         if (el.id === elementId) {
           return { ...el, size: { width, height } };
         }
-
-        // Only consider elements that are below the changed element
-        if (el.position.y <= element.position.y) {
-          return el;
-        }
-
-        const currentGap = el.position.y - elementBottom;
-
-        // If element overlaps (negative or zero gap) or gap is too small, push down
-        if (currentGap < gap) {
-          const newY = elementBottom + gap;
-          elementOperations.update(el.id, { position: { x: el.position.x, y: newY } });
-          return { ...el, position: { x: el.position.x, y: newY } };
-        }
-
-        // If gap is too large (element was pushed down and table collapsed), pull up
-        if (currentGap > maxGap) {
-          const newY = elementBottom + gap;
-          elementOperations.update(el.id, { position: { x: el.position.x, y: newY } });
-          return { ...el, position: { x: el.position.x, y: newY } };
-        }
-
         return el;
       });
 
-      return updatedElements;
+      // Sort all elements by Y position to process them in order
+      const sortedByY = [...updatedElements].sort((a, b) => a.position.y - b.position.y);
+
+      // Recalculate positions for all elements below the changed element
+      // This ensures cascading repositioning works correctly
+      let currentY = 0;
+      const repositioned: typeof updatedElements = [];
+
+      for (const el of sortedByY) {
+        // For the first element or elements at the top, keep their position
+        if (repositioned.length === 0) {
+          currentY = el.position.y + el.size.height;
+          repositioned.push(el);
+          continue;
+        }
+
+        // Calculate where this element should be (after previous element + gap)
+        const expectedY = currentY + gap;
+
+        // If element is above where it should be (overlapping), push it down
+        // If element is too far below (gap > 40), pull it up
+        const currentGap = el.position.y - currentY;
+
+        if (currentGap < gap || currentGap > 40) {
+          const newY = expectedY;
+          if (el.position.y !== newY) {
+            elementOperations.update(el.id, { position: { x: el.position.x, y: newY } });
+          }
+          repositioned.push({ ...el, position: { x: el.position.x, y: newY } });
+          currentY = newY + el.size.height;
+        } else {
+          repositioned.push(el);
+          currentY = el.position.y + el.size.height;
+        }
+      }
+
+      return repositioned;
     });
   }, []);
 
