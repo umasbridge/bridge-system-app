@@ -18,7 +18,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { elementOperations, WorkspaceElement as DBWorkspaceElement, workspaceOperations, Workspace } from '../../lib/supabase-db';
 import { WorkspaceHierarchyEntry } from '../../lib/backup-operations';
 import { parseClipboardAsTable } from '../../utils/tableParsing';
-import { getDisplayName } from '../../lib/workspace-utils';
+import { getDisplayName, getDisplayHtml } from '../../lib/workspace-utils';
 
 // Use worker from public directory
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -724,7 +724,7 @@ export function WorkspaceEditor({
     if (workspaceNameRef.current && !focusedWorkspaceName) {
       // Load HTML content if available, otherwise use plain text title
       if (workspace?.titleHtmlContent) {
-        workspaceNameRef.current.innerHTML = workspace.titleHtmlContent;
+        workspaceNameRef.current.innerHTML = getDisplayHtml(workspace.titleHtmlContent, title);
       } else {
         const displayName = getDisplayName(title);
         const currentContent = workspaceNameRef.current.textContent || '';

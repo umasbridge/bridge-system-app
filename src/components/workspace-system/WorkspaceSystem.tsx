@@ -7,7 +7,7 @@ import { WorkspaceNameDialog } from './WorkspaceNameDialog';
 import { BackupConfirmDialog } from './BackupConfirmDialog';
 import { workspaceOperations, imageOperations, elementOperations, Workspace as DBWorkspace } from '../../lib/supabase-db';
 import { createSystemBackup, buildWorkspaceHierarchy, WorkspaceHierarchyEntry } from '../../lib/backup-operations';
-import { getDisplayName } from '../../lib/workspace-utils';
+import { getDisplayName, getDisplayHtml } from '../../lib/workspace-utils';
 
 interface Workspace {
   id: string;
@@ -188,7 +188,7 @@ function CommentBox({ workspaceName, position, workspace, onClose, onMouseDown, 
         {workspace.titleHtmlContent ? (
           <h2
             className="select-none"
-            dangerouslySetInnerHTML={{ __html: workspace.titleHtmlContent }}
+            dangerouslySetInnerHTML={{ __html: getDisplayHtml(workspace.titleHtmlContent, workspace.title) }}
           />
         ) : (
           <h2 className="text-sm font-medium select-none">{getDisplayName(workspaceName)}</h2>
@@ -744,7 +744,7 @@ export function WorkspaceSystem() {
                           {workspace.titleHtmlContent ? (
                             <h2
                               className="select-none"
-                              dangerouslySetInnerHTML={{ __html: workspace.titleHtmlContent }}
+                              dangerouslySetInnerHTML={{ __html: getDisplayHtml(workspace.titleHtmlContent, workspace.title) }}
                             />
                           ) : (
                             <h2 className="text-sm font-medium select-none">{getDisplayName(workspace.title)}</h2>
