@@ -183,3 +183,17 @@ src/
 - Not scared of complexity (mentions Figma + Claude Code + Chrome DevTools MCP)
 - Will build first template manually using the app (dogfooding)
 - Moving to Supabase for cloud persistence and collaboration features (2025-11-27)
+
+### Session Progress (2026-01-01)
+**Completed:**
+- Split-view hyperlink type fix (TextElement.tsx)
+- Table name row read-only in view mode (SystemsTableNameHeader.tsx)
+- GitHub repo: `umasbridge/bridge-system-app` with PAT auth
+- Display name feature: `getDisplayName`/`getDisplayHtml` in `src/lib/workspace-utils.ts`
+  - Shows chapter name only, strips "SystemName_" prefix from headings
+- Table repositioning fix: cascading reposition on expand/collapse (WorkspaceEditor.tsx)
+- Statusline: dir, git branch, context %
+
+**Next session:**
+- Test display name fix in browser
+- Add element repositioning on workspace load (fix stale gaps)
