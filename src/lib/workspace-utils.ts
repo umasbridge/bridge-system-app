@@ -40,9 +40,16 @@ export function getDisplayHtml(html: string | undefined | null, fullTitle: strin
     return html;
   }
 
-  // Replace the full title with the display name in the HTML
-  // This handles cases where the title might appear multiple times or with different escaping
-  return html.replace(new RegExp(escapeRegExp(fullTitle), 'g'), displayName);
+  // Get the system prefix (everything before and including the first underscore)
+  const underscoreIndex = fullTitle.indexOf('_');
+  if (underscoreIndex === -1) {
+    return html;
+  }
+  const systemPrefix = fullTitle.substring(0, underscoreIndex + 1);
+
+  // Replace the system prefix with empty string in the HTML
+  // This is more robust than trying to match the full title
+  return html.replace(new RegExp(escapeRegExp(systemPrefix), 'g'), '');
 }
 
 /**
