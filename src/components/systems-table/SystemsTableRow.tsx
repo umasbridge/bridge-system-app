@@ -101,7 +101,8 @@ export function SystemsTableRow({
 
   const bidColumnWidth = getLevelWidth(level);
   const indentWidth = getIndentWidth(level);
-  const actualMeaningWidth = meaningWidth - indentWidth - bidColumnWidth;
+  // Ensure meaning width is never negative (minimum 20px for border visibility)
+  const actualMeaningWidth = Math.max(20, meaningWidth - indentWidth - bidColumnWidth);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

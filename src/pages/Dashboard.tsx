@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, FolderOpen, FilePlus, Upload, Settings, FileText } from 'lucide-react';
+import { LogOut, FolderOpen, FilePlus, Upload, Settings, Search, BookOpen, Database } from 'lucide-react';
 import { auth } from '../lib/mockAuth';
 import { workspaceOperations, elementOperations } from '../lib/supabase-db';
 import { Button } from '../components/ui/button';
 import { CreateSystemDialog } from '../components/workspace-system/CreateSystemDialog';
 import { OpenSystemDialog } from '../components/workspace-system/OpenSystemDialog';
-import { ImportTableDialog } from '../components/workspace-system/ImportTableDialog';
-import { ImportTextDialog } from '../components/workspace-system/ImportTextDialog';
+import { UploadSystemDocDialog } from '../components/workspace-system/UploadSystemDocDialog';
+import { seedFantunes } from '../lib/seed-fantunes';
 import logoImg from '../assets/logo.png';
 
 export function Dashboard() {
@@ -16,8 +16,23 @@ export function Dashboard() {
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showOpenDialog, setShowOpenDialog] = useState(false);
-  const [showImportTableDialog, setShowImportTableDialog] = useState(false);
-  const [showImportTextDialog, setShowImportTextDialog] = useState(false);
+  const [showUploadSystemDocDialog, setShowUploadSystemDocDialog] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  const handleSeedFantunes = async () => {
+    if (isSeeding) return;
+    setIsSeeding(true);
+    try {
+      const workspaceId = await seedFantunes();
+      alert('Fantunes system created successfully!');
+      navigate(`/workspace/${workspaceId}?mode=view`);
+    } catch (err) {
+      console.error('Failed to seed Fantunes:', err);
+      alert('Failed to create Fantunes system. Check console for details.');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   const handleLogout = () => {
     auth.logout();
@@ -122,6 +137,24 @@ export function Dashboard() {
     navigate(`/workspace/${workspaceId}?mode=view`);
   };
 
+  const handleCreateFromConventions = async (systemName: string, mdContent: string) => {
+    // Create and download the .md file
+    const fileName = `${systemName.replace(/\s+/g, '_')}.md`;
+    const blob = new Blob([mdContent], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    console.log(`Downloaded: ${fileName}`);
+    setShowCreateDialog(false);
+  };
+
   return (
     <div className="min-h-screen bg-neutral-50">
       {/* Top Navigation */}
@@ -172,24 +205,14 @@ export function Dashboard() {
             <span className="text-white text-xl font-semibold text-center px-4">Open Existing System</span>
           </div>
           <div
-            onClick={() => setShowImportTableDialog(true)}
+            onClick={() => setShowUploadSystemDocDialog(true)}
             className="w-64 h-64 rounded-lg flex flex-col items-center justify-center gap-4 cursor-pointer transition-colors shadow-lg"
             style={{ backgroundColor: '#16a34a' }}
             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#15803d'}
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#16a34a'}
           >
             <Upload className="w-16 h-16 text-white" />
-            <span className="text-white text-xl font-semibold text-center px-4">Upload Table</span>
-          </div>
-          <div
-            onClick={() => setShowImportTextDialog(true)}
-            className="w-64 h-64 rounded-lg flex flex-col items-center justify-center gap-4 cursor-pointer transition-colors shadow-lg"
-            style={{ backgroundColor: '#8b5cf6' }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#7c3aed'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#8b5cf6'}
-          >
-            <FileText className="w-16 h-16 text-white" />
-            <span className="text-white text-xl font-semibold text-center px-4">Upload Text</span>
+            <span className="text-white text-xl font-semibold text-center px-4">Upload System Doc</span>
           </div>
           <div
             onClick={() => navigate('/manage-elements')}
@@ -201,6 +224,38 @@ export function Dashboard() {
             <Settings className="w-16 h-16 text-white" />
             <span className="text-white text-xl font-semibold text-center px-4">Manage System Elements</span>
           </div>
+          <div
+            onClick={() => navigate('/practice')}
+            className="w-64 h-64 rounded-lg flex flex-col items-center justify-center gap-4 cursor-pointer transition-colors shadow-lg"
+            style={{ backgroundColor: '#f59e0b' }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f59e0b'}
+          >
+            <Search className="w-16 h-16 text-white" />
+            <span className="text-white text-xl font-semibold text-center px-4">System Query</span>
+          </div>
+          <div
+            onClick={() => navigate('/conventions')}
+            className="w-64 h-64 rounded-lg flex flex-col items-center justify-center gap-4 cursor-pointer transition-colors shadow-lg"
+            style={{ backgroundColor: '#8b5cf6' }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#7c3aed'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#8b5cf6'}
+          >
+            <BookOpen className="w-16 h-16 text-white" />
+            <span className="text-white text-xl font-semibold text-center px-4">Conventions Library</span>
+          </div>
+          <div
+            onClick={handleSeedFantunes}
+            className={`w-64 h-64 rounded-lg flex flex-col items-center justify-center gap-4 cursor-pointer transition-colors shadow-lg ${isSeeding ? 'opacity-50 cursor-not-allowed' : ''}`}
+            style={{ backgroundColor: '#dc2626' }}
+            onMouseEnter={(e) => !isSeeding && (e.currentTarget.style.backgroundColor = '#b91c1c')}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+          >
+            <Database className="w-16 h-16 text-white" />
+            <span className="text-white text-xl font-semibold text-center px-4">
+              {isSeeding ? 'Creating...' : 'Seed Fantunes'}
+            </span>
+          </div>
         </div>
 
         {/* Create System Dialog */}
@@ -209,6 +264,7 @@ export function Dashboard() {
             onClose={() => setShowCreateDialog(false)}
             onCreateFromScratch={handleCreateFromScratch}
             onCreateFromTemplate={handleCreateFromTemplate}
+            onCreateFromConventions={handleCreateFromConventions}
           />
         )}
 
@@ -220,23 +276,12 @@ export function Dashboard() {
           />
         )}
 
-        {/* Import Table Dialog */}
-        {showImportTableDialog && (
-          <ImportTableDialog
-            onClose={() => setShowImportTableDialog(false)}
+        {/* Upload System Doc Dialog */}
+        {showUploadSystemDocDialog && (
+          <UploadSystemDocDialog
+            onClose={() => setShowUploadSystemDocDialog(false)}
             onImportComplete={(workspaceId) => {
-              setShowImportTableDialog(false);
-              navigate(`/workspace/${workspaceId}?mode=edit`);
-            }}
-          />
-        )}
-
-        {/* Import Text Dialog */}
-        {showImportTextDialog && (
-          <ImportTextDialog
-            onClose={() => setShowImportTextDialog(false)}
-            onImportComplete={(workspaceId) => {
-              setShowImportTextDialog(false);
+              setShowUploadSystemDocDialog(false);
               navigate(`/workspace/${workspaceId}?mode=edit`);
             }}
           />

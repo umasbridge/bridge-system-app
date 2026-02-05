@@ -11,7 +11,7 @@ interface HyperlinkDialogProps {
   namingPrefix: string;
   existingWorkspaces: string[];
   linkedWorkspaces: string[];
-  systemWorkspaces?: string[]; // System names (isSystem: true workspaces)
+  systemWorkspaces?: string[]; // System names (type='bidding_system' workspaces)
   workspaceHierarchy?: Map<string, WorkspaceHierarchyEntry>; // Workspace parent-child relationships
   onConfirm: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void;
   onConfirmWithCopy?: (newWorkspaceName: string, sourceWorkspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void;

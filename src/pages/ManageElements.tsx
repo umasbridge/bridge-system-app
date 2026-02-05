@@ -148,7 +148,7 @@ export function ManageElements() {
     childrenMap.forEach((childTitles, parentId) => {
       childTitles.forEach(childTitle => {
         const childWs = workspaceByTitle.get(childTitle);
-        if (childWs && !childWs.isSystem) {
+        if (childWs && !childWs.type === 'bidding_system') {
           hasParent.add(childWs.id);
         }
       });
@@ -161,7 +161,7 @@ export function ManageElements() {
         return {
           id: ws.id,
           name: ws.title || extractTextFromHtml(ws.titleHtmlContent) || 'Untitled',
-          type: ws.isSystem ? 'system' : 'workspace',
+          type: ws.type === 'bidding_system' ? 'system' : 'workspace',
           workspace: ws,
           children: [],
           depth
@@ -175,7 +175,7 @@ export function ManageElements() {
       // Add all linked workspaces as children (no restriction on single parent)
       childTitles.forEach(childTitle => {
         const childWs = workspaceByTitle.get(childTitle);
-        if (childWs && !childWs.isSystem) {
+        if (childWs && !childWs.type === 'bidding_system') {
           children.push(buildNode(childWs, depth + 1, new Set(visited)));
         }
       });
@@ -186,7 +186,7 @@ export function ManageElements() {
       return {
         id: ws.id,
         name: ws.title || extractTextFromHtml(ws.titleHtmlContent) || 'Untitled',
-        type: ws.isSystem ? 'system' : 'workspace',
+        type: ws.type === 'bidding_system' ? 'system' : 'workspace',
         workspace: ws,
         children,
         depth
@@ -194,7 +194,7 @@ export function ManageElements() {
     };
 
     // Separate systems into main systems and backups
-    const allSystems = allWorkspaces.filter(ws => ws.isSystem && !ws.deletedAt);
+    const allSystems = allWorkspaces.filter(ws => ws.type === 'bidding_system' && !ws.deletedAt);
     const mainSystems = allSystems.filter(ws => !isBackup(ws));
     const backups = allSystems.filter(ws => isBackup(ws));
 
@@ -213,7 +213,7 @@ export function ManageElements() {
 
     // Find orphan workspaces (not linked from any workspace and not a system)
     const orphans = allWorkspaces.filter(ws =>
-      !ws.isSystem &&
+      !ws.type === 'bidding_system' &&
       !ws.deletedAt &&
       !hasParent.has(ws.id)
     );
@@ -497,7 +497,7 @@ export function ManageElements() {
               <Folder className="w-4 h-4" />
               Systems & Workspaces
               <span className="text-xs text-gray-400">
-                ({allWorkspaces.filter(w => w.isSystem && !w.deletedAt && !isBackup(w)).length})
+                ({allWorkspaces.filter(w => w.type === 'bidding_system' && !w.deletedAt && !isBackup(w)).length})
               </span>
             </span>
           </button>

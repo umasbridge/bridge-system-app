@@ -1,6 +1,8 @@
 // Supabase Database Types
 // Auto-generated from schema, manually maintained
 
+export type WorkspaceType = 'bidding_system' | 'bidding_convention' | 'user_defined';
+
 export interface Database {
   public: {
     Tables: {
@@ -21,10 +23,13 @@ export interface Database {
           left_margin: number | null;
           top_margin: number | null;
           partners: Partner[] | null;
-          is_system: boolean;
           deleted_at: string | null;
           backup_group_id: string | null;
           backup_of: string | null;
+          slug: string | null;
+          type: WorkspaceType;
+          parent_workspace_id: string | null;
+          description_html: string | null;
         };
         Insert: {
           id?: string;
@@ -42,10 +47,13 @@ export interface Database {
           left_margin?: number | null;
           top_margin?: number | null;
           partners?: Partner[] | null;
-          is_system?: boolean;
           deleted_at?: string | null;
           backup_group_id?: string | null;
           backup_of?: string | null;
+          slug?: string | null;
+          type?: WorkspaceType;
+          parent_workspace_id?: string | null;
+          description_html?: string | null;
         };
         Update: {
           id?: string;
@@ -63,10 +71,51 @@ export interface Database {
           left_margin?: number | null;
           top_margin?: number | null;
           partners?: Partner[] | null;
-          is_system?: boolean;
           deleted_at?: string | null;
           backup_group_id?: string | null;
           backup_of?: string | null;
+          slug?: string | null;
+          type?: WorkspaceType;
+          parent_workspace_id?: string | null;
+          description_html?: string | null;
+        };
+      };
+      bid_rules: {
+        Row: {
+          id: string;
+          element_id: string | null;
+          parent_id: string | null;
+          bid: string;
+          meaning: string | null;
+          auction_context: string[];
+          sort_order: number;
+          workspace_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          element_id?: string | null;
+          parent_id?: string | null;
+          bid: string;
+          meaning?: string | null;
+          auction_context?: string[];
+          sort_order?: number;
+          workspace_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          element_id?: string | null;
+          parent_id?: string | null;
+          bid?: string;
+          meaning?: string | null;
+          auction_context?: string[];
+          sort_order?: number;
+          workspace_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
         };
       };
       elements: {
@@ -204,3 +253,7 @@ export type WorkspaceUpdate = Database['public']['Tables']['workspaces']['Update
 export type ElementRow = Database['public']['Tables']['elements']['Row'];
 export type ElementInsert = Database['public']['Tables']['elements']['Insert'];
 export type ElementUpdate = Database['public']['Tables']['elements']['Update'];
+
+export type BidRuleRow = Database['public']['Tables']['bid_rules']['Row'];
+export type BidRuleInsert = Database['public']['Tables']['bid_rules']['Insert'];
+export type BidRuleUpdate = Database['public']['Tables']['bid_rules']['Update'];

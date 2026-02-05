@@ -5,6 +5,8 @@ import { Signup } from './pages/Signup';
 import { ResetPassword } from './pages/ResetPassword';
 import { Dashboard } from './pages/Dashboard';
 import { ManageElements } from './pages/ManageElements';
+import { BiddingPractice } from './pages/BiddingPractice';
+import { ConventionsLibrary } from './pages/ConventionsLibrary';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './lib/auth-context';
 
@@ -40,6 +42,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ManageElements />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/practice"
+        element={
+          <ProtectedRoute>
+            <BiddingPractice />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/conventions"
+        element={
+          <ProtectedRoute>
+            <ConventionsLibrary />
           </ProtectedRoute>
         }
       />

@@ -9,11 +9,13 @@ import { workspaceOperations, imageOperations, elementOperations, Workspace as D
 import { createSystemBackup, buildWorkspaceHierarchy, WorkspaceHierarchyEntry } from '../../lib/backup-operations';
 import { getDisplayName, getDisplayHtml } from '../../lib/workspace-utils';
 
+type WorkspaceType = 'bidding_system' | 'bidding_convention' | 'user_defined';
+
 interface Workspace {
   id: string;
   title: string;
   titleHtmlContent?: string;
-  isSystem: boolean;
+  type: WorkspaceType;
   canvasWidth?: number;
   leftMargin?: number;
   topMargin?: number;
@@ -393,8 +395,8 @@ export function WorkspaceSystem() {
     }
 
     if (!targetWorkspace) {
-      // Workspace truly doesn't exist - create as linked workspace (isSystem: false)
-      const newWorkspace = await workspaceOperations.create(workspaceName, false);
+      // Workspace truly doesn't exist - create as linked workspace (user_defined)
+      const newWorkspace = await workspaceOperations.create(workspaceName, 'user_defined');
 
       // Set the title with bold and larger font for linked workspaces
       const titleHtmlContent = `<span style="font-weight: 700; font-size: 18px">${workspaceName}</span>`;
@@ -477,7 +479,7 @@ export function WorkspaceSystem() {
     if (!sourceWorkspace) return;
 
     // Create new workspace with the given name (as linked workspace, not top-level system)
-    const newWorkspace = await workspaceOperations.create(newWorkspaceName, false);
+    const newWorkspace = await workspaceOperations.create(newWorkspaceName, 'user_defined');
 
     // Set the title with bold and larger font for linked workspaces
     const titleHtmlContent = `<span style="font-weight: 700; font-size: 18px">${newWorkspaceName}</span>`;
@@ -599,7 +601,7 @@ export function WorkspaceSystem() {
 
     // Check if this is a system workspace - if so, show backup dialog
     const workspace = workspaces.find(ws => ws.id === workspaceId);
-    if (workspace?.isSystem) {
+    if (workspace?.type === 'bidding_system') {
       setShowBackupDialog(true);
       return;
     }
@@ -617,7 +619,7 @@ export function WorkspaceSystem() {
     // Create backup in background
     if (activeWorkspaceId) {
       const activeWs = workspaces.find(ws => ws.id === activeWorkspaceId);
-      if (activeWs?.isSystem) {
+      if (activeWs?.type === 'bidding_system') {
         workspaceOperations.getById(activeWorkspaceId).then(fullWorkspace => {
           if (fullWorkspace && !fullWorkspace.backupOf && !fullWorkspace.backupGroupId) {
             createSystemBackup(activeWorkspaceId).then(result => {
@@ -661,7 +663,7 @@ export function WorkspaceSystem() {
   const getCurrentSystemName = (): string | null => {
     if (!activeWorkspace?.title) return null;
 
-    if (activeWorkspace.isSystem) {
+    if (activeWorkspace.type === 'bidding_system') {
       return activeWorkspace.title;
     }
 
@@ -675,7 +677,7 @@ export function WorkspaceSystem() {
     // Fallback: try to find parent system by checking which system this workspace belongs to
     // by looking at the navigation history or matching prefix
     const possibleSystemNames = workspaces
-      .filter(ws => ws.isSystem && ws.title)
+      .filter(ws => ws.type === 'bidding_system' && ws.title)
       .map(ws => ws.title);
 
     for (const sysName of possibleSystemNames) {
@@ -737,35 +739,23 @@ export function WorkspaceSystem() {
                 >
                   {/* Main Workspace - A4 Page Layout with fixed header/footer */}
                   <div className={splitViewWorkspaceId && isActive ? "w-1/2 pr-4 h-full" : "w-full h-full"}>
-                    <div data-main-workspace className="bg-white border-2 border-gray-300 rounded-sm shadow-lg flex flex-col h-full overflow-hidden" style={{ width: `${workspace.canvasWidth || 794}px`, maxHeight: '100%' }}>
-                      {/* Main Workspace Header - shows workspace title for linked workspaces (non-systems) */}
-                      {!workspace.isSystem && (
-                        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0">
-                          {workspace.titleHtmlContent ? (
-                            <h2
-                              className="select-none"
-                              dangerouslySetInnerHTML={{ __html: getDisplayHtml(workspace.titleHtmlContent, workspace.title) }}
-                            />
-                          ) : (
-                            <h2 className="text-sm font-medium select-none">{getDisplayName(workspace.title)}</h2>
-                          )}
-                          <button
-                            onClick={() => handleCloseWorkspace(workspace.id)}
-                            className="p-1 border border-gray-300 rounded hover:bg-gray-100 hover:border-gray-400 transition-colors"
-                            title="Close workspace"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
+                    <div data-main-workspace className="bg-white border-2 border-gray-300 rounded-sm shadow-lg flex flex-col h-full overflow-hidden relative" style={{ width: `${workspace.canvasWidth || 794}px`, maxHeight: '100%' }}>
+                      {/* Close button - top right corner of workspace */}
+                      <button
+                        onClick={() => handleCloseWorkspace(workspace.id)}
+                        className="absolute top-2 right-2 z-10 p-1 bg-white border border-gray-300 rounded hover:bg-gray-100 hover:border-gray-400 transition-colors shadow-sm"
+                        title="Close workspace"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                       <WorkspaceEditor
                         workspaceId={workspace.id}
                         initialTitle={workspace.title}
                         onTitleChange={(newTitle) => handleTitleChange(workspace.id, newTitle)}
                         onClose={() => handleCloseWorkspace(workspace.id)}
                         existingWorkspaces={workspaces.map(ws => ws.title)}
-                        linkedWorkspaces={workspaces.filter(ws => !ws.isSystem && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
-                        systemWorkspaces={workspaces.filter(ws => ws.isSystem && ws.title.trim() && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+                        linkedWorkspaces={workspaces.filter(ws => ws.type === 'user_defined' && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+                        systemWorkspaces={workspaces.filter(ws => ws.type === 'bidding_system' && ws.title.trim() && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
                         workspaceHierarchy={workspaceHierarchy}
                         onNavigateToWorkspace={handleNavigateToWorkspace}
                         onDuplicateToWorkspace={handleDuplicateToWorkspace}
@@ -781,14 +771,23 @@ export function WorkspaceSystem() {
                   {isActive && splitViewWorkspaceId && splitViewWorkspace && (
                     <div className="w-1/2 pl-4 h-full">
                       <div className="bg-white border-2 border-gray-300 rounded-sm shadow-lg relative flex flex-col h-full overflow-hidden" style={{ width: `${splitViewWorkspace.canvasWidth || 794}px`, maxWidth: '100%', maxHeight: '100%' }}>
+                      {/* Close button - top right corner of split view workspace */}
+                      <button
+                        onClick={() => setSplitViewWorkspaceId(null)}
+                        className="absolute top-2 right-2 z-10 p-1 bg-white border border-gray-300 rounded hover:bg-gray-100 hover:border-gray-400 transition-colors shadow-sm"
+                        title="Close split view"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                       <WorkspaceEditor
+                        key={splitViewWorkspace.id}
                         workspaceId={splitViewWorkspace.id}
                         initialTitle={splitViewWorkspace.title}
                         onTitleChange={(newTitle) => handleTitleChange(splitViewWorkspace.id, newTitle)}
                         onClose={() => setSplitViewWorkspaceId(null)}
                         existingWorkspaces={workspaces.map(ws => ws.title)}
-                        linkedWorkspaces={workspaces.filter(ws => !ws.isSystem && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
-                        systemWorkspaces={workspaces.filter(ws => ws.isSystem && ws.title.trim() && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+                        linkedWorkspaces={workspaces.filter(ws => ws.type === 'user_defined' && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+                        systemWorkspaces={workspaces.filter(ws => ws.type === 'bidding_system' && ws.title.trim() && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
                         workspaceHierarchy={workspaceHierarchy}
                         onNavigateToWorkspace={handleNavigateToWorkspace}
                         onDuplicateToWorkspace={handleDuplicateToWorkspace}
@@ -869,8 +868,8 @@ export function WorkspaceSystem() {
               }}
               isViewMode={isViewMode}
               existingWorkspaces={workspaces.map(ws => ws.title)}
-              linkedWorkspaces={workspaces.filter(ws => !ws.isSystem && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
-              systemWorkspaces={workspaces.filter(ws => ws.isSystem && ws.title.trim() && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+              linkedWorkspaces={workspaces.filter(ws => ws.type === 'user_defined' && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
+              systemWorkspaces={workspaces.filter(ws => ws.type === 'bidding_system' && ws.title.trim() && !ws.title.includes('[Backup') && !ws.title.includes('Backup')).map(ws => ws.title)}
               workspaceHierarchy={workspaceHierarchy}
               onNavigateToWorkspace={handleNavigateToWorkspace}
               onDuplicateToWorkspace={handleDuplicateToWorkspace}

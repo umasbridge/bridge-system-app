@@ -16,7 +16,7 @@ interface TextFormatPanelProps {
   onDuplicateToWorkspace?: (newWorkspaceName: string, sourceWorkspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void;
   existingWorkspaces?: string[]; // All workspaces (for checking if name exists)
   linkedWorkspaces?: string[]; // Non-system workspaces only (for "Use Existing" list)
-  systemWorkspaces?: string[]; // System names (isSystem: true workspaces)
+  systemWorkspaces?: string[]; // System names (type='bidding_system' workspaces)
   workspaceHierarchy?: Map<string, WorkspaceHierarchyEntry>; // Workspace parent-child relationships
   isSidePanel?: boolean;
   namingPrefix?: string; // Auto-prefix for new workspace names (e.g., "System_Chapter_")

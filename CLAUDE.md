@@ -184,7 +184,7 @@ src/
 - Will build first template manually using the app (dogfooding)
 - Moving to Supabase for cloud persistence and collaboration features (2025-11-27)
 
-### Session Progress (2026-01-01)
+### Session Progress (2026-01-07)
 **Completed:**
 - Split-view hyperlink type fix (TextElement.tsx)
 - Table name row read-only in view mode (SystemsTableNameHeader.tsx)
@@ -193,7 +193,5 @@ src/
   - Shows chapter name only, strips "SystemName_" prefix from headings
 - Table repositioning fix: cascading reposition on expand/collapse (WorkspaceEditor.tsx)
 - Statusline: dir, git branch, context %
-
-**Next session:**
-- Test display name fix in browser
-- Add element repositioning on workspace load (fix stale gaps)
+- Display name fix verified: chapter tabs show "1m opening" instead of "Uma + PS Dec 2025_1m opening"
+- Element repositioning on load verified: 43px consistent spacing between elements (WorkspaceEditor.tsx:361-434)

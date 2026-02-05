@@ -562,6 +562,14 @@ export function SystemsTable({
     onRowsChange?.(updatedRows);
   };
 
+  // Calculate total table width as the actual rendered row width for level 0
+  // This handles cases where meaningWidth < levelWidths[0] (legacy data)
+  // In SystemsTableRow: actualMeaningWidth = Math.max(20, meaningWidth - indentWidth - bidColumnWidth)
+  // For level 0: rowWidth = levelWidths[0] + Math.max(20, meaningWidth - levelWidths[0])
+  const level0BidWidth = levelWidths[0] || 80;
+  const level0ActualMeaningWidth = Math.max(20, meaningWidth - level0BidWidth);
+  const totalTableWidth = level0BidWidth + level0ActualMeaningWidth;
+
   return (
     <div
       className="inline-block"
@@ -584,6 +592,7 @@ export function SystemsTable({
             onUpdate={updateName}
             onDelete={deleteName}
             meaningWidth={meaningWidth}
+            tableWidth={totalTableWidth}
             gridlines={gridlines}
             isViewMode={isViewMode}
             onFocusChange={(isFocused, applyFormatFn, applyHyperlinkFn, selectedText) => {

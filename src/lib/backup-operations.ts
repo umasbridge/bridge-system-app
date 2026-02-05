@@ -122,7 +122,7 @@ export async function buildWorkspaceHierarchy(
     hierarchy.set(ws.title, {
       workspaceId: ws.id,
       workspaceName: ws.title,
-      isSystem: ws.isSystem,
+      isSystem: ws.type === 'bidding_system',
       children: []
     });
   }
@@ -341,7 +341,7 @@ async function createBackupWorkspace(
       canvas_width: original.canvasWidth || 794,
       canvas_height: original.canvasHeight || 1123,
       partners: original.partners,
-      is_system: isBackupSystem, // Only the main backup workspace is a "system"
+      type: isBackupSystem ? 'bidding_system' : 'user_defined', // Only the main backup workspace is a "system"
       backup_group_id: backupGroupId,
       backup_of: backupOf,
     })
@@ -363,7 +363,7 @@ async function createBackupWorkspace(
     canvasWidth: data.canvas_width || undefined,
     canvasHeight: data.canvas_height || undefined,
     partners: data.partners || undefined,
-    isSystem: data.is_system,
+    type: data.type,
     backupGroupId: data.backup_group_id || undefined,
     backupOf: data.backup_of || undefined,
   };
@@ -400,7 +400,7 @@ export async function createSystemBackup(systemWorkspaceId: string): Promise<Bac
     if (!systemWorkspace) {
       return { success: false, error: 'System workspace not found' };
     }
-    if (!systemWorkspace.isSystem) {
+    if (systemWorkspace.type !== 'bidding_system') {
       return { success: false, error: 'Can only backup system workspaces' };
     }
     // Don't backup backups
@@ -500,7 +500,7 @@ async function getBackupsForSystem(systemWorkspaceId: string): Promise<Workspace
     .from('workspaces')
     .select('*')
     .eq('backup_of', systemWorkspaceId)
-    .eq('is_system', true) // Only get the backup "root" workspaces
+    .eq('type', 'bidding_system') // Only get the backup "root" workspaces
     .order('created_at', { ascending: true }); // Oldest first
 
   if (error) throw error;
@@ -518,7 +518,7 @@ async function getBackupsForSystem(systemWorkspaceId: string): Promise<Workspace
     canvasWidth: row.canvas_width || undefined,
     canvasHeight: row.canvas_height || undefined,
     partners: row.partners || undefined,
-    isSystem: row.is_system,
+    type: row.type,
     backupGroupId: row.backup_group_id || undefined,
     backupOf: row.backup_of || undefined,
   }));
@@ -582,7 +582,7 @@ export async function getLastBackupForSystem(systemWorkspaceId: string): Promise
     .from('workspaces')
     .select('title, created_at')
     .eq('backup_of', systemWorkspaceId)
-    .eq('is_system', true)
+    .eq('type', 'bidding_system')
     .order('created_at', { ascending: false })
     .limit(1)
     .single();

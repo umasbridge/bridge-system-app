@@ -21,6 +21,7 @@ interface SystemsTableNameHeaderProps {
   onUpdate: (name: string, htmlContent?: string) => void;
   onDelete: () => void;
   meaningWidth: number;
+  tableWidth?: number; // Optional full table width for merged header row
   gridlines?: GridlineOptions;
   isViewMode?: boolean;
   onFocusChange?: (
@@ -39,12 +40,15 @@ export function SystemsTableNameHeader({
   onUpdate,
   onDelete,
   meaningWidth,
+  tableWidth,
   gridlines,
   isViewMode,
   onFocusChange,
   workspaceId,
   elementId
 }: SystemsTableNameHeaderProps) {
+  // Use tableWidth for full-width merged header, otherwise use meaningWidth
+  const headerWidth = tableWidth || meaningWidth;
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -53,7 +57,7 @@ export function SystemsTableNameHeader({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{
-        width: `${meaningWidth}px`,
+        width: `${headerWidth}px`,
         backgroundColor: 'white',
         borderBottom: gridlines?.enabled
           ? `${gridlines.width}px ${gridlines.style || 'solid'} ${gridlines.color}`
@@ -73,7 +77,7 @@ export function SystemsTableNameHeader({
           onChange={(text, html) => onUpdate(text, html)}
           placeholder="Table name"
           minHeight={ROW_MIN_HEIGHT}
-          columnWidth={meaningWidth}
+          columnWidth={headerWidth}
           readOnly={isViewMode}
           onFocusChange={onFocusChange}
           workspaceId={workspaceId}

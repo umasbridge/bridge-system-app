@@ -15,7 +15,7 @@ import { ElementNameDialog } from './ElementNameDialog';
 import { ShareDialog } from './ShareDialog';
 import { useWorkspaceContext } from './WorkspaceSystem';
 import * as pdfjsLib from 'pdfjs-dist';
-import { elementOperations, WorkspaceElement as DBWorkspaceElement, workspaceOperations, Workspace } from '../../lib/supabase-db';
+import { elementOperations, WorkspaceElement as DBWorkspaceElement, workspaceOperations, Workspace, bidRulesOperations } from '../../lib/supabase-db';
 import { WorkspaceHierarchyEntry } from '../../lib/backup-operations';
 import { parseClipboardAsTable } from '../../utils/tableParsing';
 import { getDisplayName, getDisplayHtml } from '../../lib/workspace-utils';
@@ -71,7 +71,7 @@ interface WorkspaceEditorProps {
   onClose?: () => void;
   existingWorkspaces?: string[];
   linkedWorkspaces?: string[]; // Non-system workspaces only
-  systemWorkspaces?: string[]; // System names (isSystem: true workspaces)
+  systemWorkspaces?: string[]; // System names (type='bidding_system' workspaces)
   workspaceHierarchy?: Map<string, WorkspaceHierarchyEntry>; // Workspace parent-child relationships from hyperlinks
   onNavigateToWorkspace?: (workspaceName: string, linkType: 'comment' | 'split-view' | 'new-page', position?: { x: number; y: number }) => void;
   onDuplicateToWorkspace?: (newWorkspaceName: string, sourceWorkspaceName: string, linkType: 'comment' | 'split-view' | 'new-page') => void;
@@ -187,6 +187,12 @@ export function WorkspaceEditor({
   const currentSystemName = workspaceContext?.currentSystemName || null;
 
   const [title, setTitle] = useState(initialTitle);
+
+  // Sync title when initialTitle prop changes (e.g., when split view workspace changes)
+  useEffect(() => {
+    setTitle(initialTitle);
+  }, [initialTitle, workspaceId]);
+
   const [elements, setElements] = useState<WorkspaceElement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -358,6 +364,11 @@ export function WorkspaceEditor({
 
   const canvasDimensions = getCanvasDimensions();
 
+  // Helper to update elements in the database
+  const safeUpdateElement = async (elementId: string, updates: Partial<DBWorkspaceElement>) => {
+    await elementOperations.update(elementId, updates);
+  };
+
   // Load workspace and elements from DB on mount
   useEffect(() => {
     const loadElements = async () => {
@@ -369,7 +380,22 @@ export function WorkspaceEditor({
         setWorkspace(workspaceData);
       }
 
-      const dbElements = await elementOperations.getByWorkspaceId(workspaceId);
+      // Load elements from database
+      const dbElements: WorkspaceElement[] = await elementOperations.getByWorkspaceId(workspaceId);
+
+      // For systems-table elements without initialRows, load from bid_rules
+      for (const el of dbElements) {
+        if (el.type === 'systems-table' && !el.initialRows?.length) {
+          try {
+            const rows = await bidRulesOperations.getTreeByElementId(el.id);
+            if (rows.length > 0) {
+              (el as any).initialRows = rows;
+            }
+          } catch (err) {
+            console.warn('Failed to load bid_rules for element:', el.id, err);
+          }
+        }
+      }
 
       if (dbElements.length === 0 && initialElements.length === 0) {
         // Start with a blank workspace - no default elements
@@ -412,8 +438,9 @@ export function WorkspaceEditor({
 
         setElements(repositioned);
 
-        // Step 3: Update positions in database if they changed
+        // Step 3: Update positions in database if they changed (skip for bid_rules synthetic element)
         for (const el of repositioned) {
+          // Skip the synthetic bid_rules element (it doesn't exist in elements table)
           const originalEl = dbElements.find(dbe => dbe.id === el.id);
           if (originalEl) {
             const positionChanged = el.position.y !== originalEl.position.y;
@@ -774,7 +801,7 @@ export function WorkspaceEditor({
         for (const el of updatedElements) {
           const original = elements.find(e => e.id === el.id);
           if (original !== el) {
-            await elementOperations.update(el.id, el);
+            await safeUpdateElement(el.id, el);
           }
         }
       }
@@ -863,7 +890,7 @@ export function WorkspaceEditor({
       row.forEach(el => {
         // Only update DB if position actually changed
         if (saveToDb && el.position.y !== rowY) {
-          elementOperations.update(el.id, { position: { ...el.position, y: rowY } });
+          safeUpdateElement(el.id, { position: { ...el.position, y: rowY } });
         }
         repositioned.push({ ...el, position: { ...el.position, y: rowY } });
       });
@@ -897,7 +924,7 @@ export function WorkspaceEditor({
       const widthDelta = newMeaningWidth - oldWidth;
 
       // Save the new meaningWidth to DB
-      elementOperations.update(elementId, { meaningWidth: newMeaningWidth } as Partial<DBWorkspaceElement>);
+      safeUpdateElement(elementId, { meaningWidth: newMeaningWidth } as Partial<DBWorkspaceElement>);
 
       if (widthDelta === 0) {
         return prevElements;
@@ -937,7 +964,7 @@ export function WorkspaceEditor({
         const isToRight = elementsToRight.some(rightEl => rightEl.id === el.id);
         if (isToRight) {
           const newX = el.position.x + widthDelta;
-          elementOperations.update(el.id, { position: { ...el.position, x: newX } });
+          safeUpdateElement(el.id, { position: { ...el.position, x: newX } });
           return { ...el, position: { ...el.position, x: newX } };
         }
         return el;
@@ -972,7 +999,7 @@ export function WorkspaceEditor({
       cumulativeY += el.size.height + ELEMENT_SPACING;
 
       if (el.position.x !== newPosition.x || el.position.y !== newPosition.y) {
-        elementOperations.update(el.id, { position: newPosition });
+        safeUpdateElement(el.id, { position: newPosition });
       }
 
       return { ...el, position: newPosition };
@@ -1021,7 +1048,7 @@ export function WorkspaceEditor({
     };
 
     // Update the current element position
-    elementOperations.update(elementId, { position: newPosition });
+    safeUpdateElement(elementId, { position: newPosition });
 
     // Update elements and recalculate positions for elements that were below
     const updatedElements = elements.map(el => {
@@ -1053,7 +1080,7 @@ export function WorkspaceEditor({
         const newPos = { x: leftMargin, y: cumulativeY };
         cumulativeY += el.size.height + ELEMENT_SPACING;
         if (el.position.x !== newPos.x || el.position.y !== newPos.y) {
-          elementOperations.update(el.id, { position: newPos });
+          safeUpdateElement(el.id, { position: newPos });
         }
         return { ...el, position: newPos };
       }
@@ -1103,7 +1130,7 @@ export function WorkspaceEditor({
     };
 
     // Update the current element position
-    elementOperations.update(elementId, { position: newPosition });
+    safeUpdateElement(elementId, { position: newPosition });
 
     // Update elements and recalculate positions for elements that were below the original position
     const updatedElements = elements.map(el => {
@@ -1139,7 +1166,7 @@ export function WorkspaceEditor({
         const newPos = { x: leftMargin, y: cumulativeY };
         cumulativeY += el.size.height + ELEMENT_SPACING;
         if (el.position.x !== newPos.x || el.position.y !== newPos.y) {
-          elementOperations.update(el.id, { position: newPos });
+          safeUpdateElement(el.id, { position: newPos });
         }
         return { ...el, position: newPos };
       }
@@ -1169,7 +1196,7 @@ export function WorkspaceEditor({
       cumulativeY += el.size.height + ELEMENT_SPACING;
 
       if (el.position.x !== newPosition.x || el.position.y !== newPosition.y) {
-        elementOperations.update(el.id, { position: newPosition });
+        safeUpdateElement(el.id, { position: newPosition });
       }
 
       return { ...el, position: newPosition };
@@ -1177,6 +1204,28 @@ export function WorkspaceEditor({
 
     setElements(repositionedElements);
   };
+
+  // Normalize spacing between all elements - ensures uniform MYGAP spacing
+  const normalizeSpacing = useCallback(() => {
+    if (elements.length === 0) return;
+
+    // Sort elements by Y position to maintain current order
+    const sorted = [...elements].sort((a, b) => a.position.y - b.position.y);
+
+    // Reposition ALL elements with uniform spacing starting from top margin
+    let cumulativeY = topMargin;
+    const repositionedElements = sorted.map(el => {
+      const newPosition = { x: leftMargin, y: cumulativeY };
+      cumulativeY += el.size.height + ELEMENT_SPACING;
+
+      // Always update position in database
+      safeUpdateElement(el.id, { position: newPosition });
+
+      return { ...el, position: newPosition };
+    });
+
+    setElements(repositionedElements);
+  }, [elements, topMargin, leftMargin]);
 
   // Helper to check if element can move up/down
   const canMoveUp = (elementId: string): boolean => {
@@ -1215,7 +1264,7 @@ export function WorkspaceEditor({
         ...cleanedDraggedElement,
         position: { x: cleanedDraggedElement.position.x, y: 20 }
       };
-      elementOperations.update(repositioned.id, { position: repositioned.position });
+      safeUpdateElement(repositioned.id, { position: repositioned.position });
       setElements([repositioned]);
       return;
     }
@@ -1254,7 +1303,7 @@ export function WorkspaceEditor({
 
       // Update in DB if position changed
       if (el.position.y !== newPosition.y) {
-        elementOperations.update(el.id, { position: newPosition });
+        safeUpdateElement(el.id, { position: newPosition });
       }
 
       return { ...el, position: newPosition };
@@ -1605,7 +1654,7 @@ export function WorkspaceEditor({
         }
 
         // Update in DB (async, don't wait)
-        elementOperations.update(id, dbUpdates);
+        safeUpdateElement(id, dbUpdates);
 
         return updated;
       }
@@ -1825,14 +1874,14 @@ export function WorkspaceEditor({
     // If name hasn't actually changed from original, just update the element
     if (trimmedName === originalName.trim()) {
       if (nameHtmlContent !== undefined && element.type === 'systems-table') {
-        await elementOperations.update(elementId, { nameHtmlContent } as Partial<DBWorkspaceElement>);
+        await safeUpdateElement(elementId, { nameHtmlContent } as Partial<DBWorkspaceElement>);
       }
       return;
     }
 
     // If new name is empty, just update the existing element (remove the name)
     if (!trimmedName) {
-      await elementOperations.update(elementId, { name: '' } as Partial<DBWorkspaceElement>);
+      await safeUpdateElement(elementId, { name: '' } as Partial<DBWorkspaceElement>);
       originalNamesRef.current.set(elementId, '');
       return;
     }
@@ -1845,7 +1894,7 @@ export function WorkspaceEditor({
 
     if (existingWithSameName) {
       // Name already exists - just update the current element's name
-      await elementOperations.update(elementId, {
+      await safeUpdateElement(elementId, {
         name: trimmedName,
         ...(nameHtmlContent !== undefined && element.type === 'systems-table' ? { nameHtmlContent } : {})
       } as Partial<DBWorkspaceElement>);
@@ -1938,7 +1987,7 @@ export function WorkspaceEditor({
       );
 
       // Update size in DB
-      elementOperations.update(elementId, { size: { width, height: newHeight } });
+      safeUpdateElement(elementId, { size: { width, height: newHeight } });
 
       // Don't reposition elements during normal editing operations (row changes, expand/collapse, etc.)
       // This prevents disruptive jumping. Repositioning only happens:
@@ -1948,7 +1997,7 @@ export function WorkspaceEditor({
     });
 
     // Persist rows to database (outside of setState since it's async)
-    await elementOperations.update(elementId, { initialRows: rows } as Partial<DBWorkspaceElement>);
+    await safeUpdateElement(elementId, { initialRows: rows } as Partial<DBWorkspaceElement>);
   };
 
   const handleContentSizeChange = (elementId: string, width: number, height: number) => {
@@ -1970,7 +2019,7 @@ export function WorkspaceEditor({
 
       // Update size in DB if it changed
       if (sizeChanged) {
-        elementOperations.update(elementId, { size: { width, height } });
+        safeUpdateElement(elementId, { size: { width, height } });
       }
 
       // Don't auto-reposition on height changes - just return updated elements
@@ -1980,61 +2029,45 @@ export function WorkspaceEditor({
   };
 
   // Callback for table height changes from ResizeObserver
-  // Updates the height AND repositions ALL elements below to maintain consistent spacing
+  // Updates the height AND repositions ALL elements to maintain MYGAP spacing
   const handleTableHeightChange = useCallback((elementId: string, height: number) => {
     setElements(prevElements => {
       const element = prevElements.find(el => el.id === elementId);
-      if (!element || element.size.height === height) return prevElements;
+      if (!element) return prevElements;
+
+      // Skip if height hasn't changed significantly (avoid micro-adjustments)
+      if (Math.abs(element.size.height - height) < 2) return prevElements;
 
       const width = element.size.width;
-      const gap = 20; // Standard gap between elements
 
       // Update the changed element's height in database
-      elementOperations.update(elementId, { size: { width, height } });
+      safeUpdateElement(elementId, { size: { width, height } });
 
       // First, update the changed element's height
-      let updatedElements = prevElements.map(el => {
+      const updatedElements = prevElements.map(el => {
         if (el.id === elementId) {
           return { ...el, size: { width, height } };
         }
         return el;
       });
 
-      // Sort all elements by Y position to process them in order
+      // Sort all elements by Y position to maintain order
       const sortedByY = [...updatedElements].sort((a, b) => a.position.y - b.position.y);
 
-      // Recalculate positions for all elements below the changed element
-      // This ensures cascading repositioning works correctly
-      let currentY = 0;
-      const repositioned: typeof updatedElements = [];
+      // Recalculate ALL positions from the top to ensure proper MYGAP spacing
+      let cumulativeY = MY_TOP_MARGIN;
+      const repositioned = sortedByY.map((el, index) => {
+        const expectedY = index === 0 ? cumulativeY : cumulativeY;
+        const newPosition = { x: el.position.x, y: expectedY };
+        cumulativeY = expectedY + el.size.height + ELEMENT_SPACING;
 
-      for (const el of sortedByY) {
-        // For the first element or elements at the top, keep their position
-        if (repositioned.length === 0) {
-          currentY = el.position.y + el.size.height;
-          repositioned.push(el);
-          continue;
+        // Only update DB if position actually changed
+        if (el.position.y !== expectedY) {
+          safeUpdateElement(el.id, { position: newPosition });
         }
 
-        // Calculate where this element should be (after previous element + gap)
-        const expectedY = currentY + gap;
-
-        // If element is above where it should be (overlapping), push it down
-        // If element is too far below (gap > 40), pull it up
-        const currentGap = el.position.y - currentY;
-
-        if (currentGap < gap || currentGap > 40) {
-          const newY = expectedY;
-          if (el.position.y !== newY) {
-            elementOperations.update(el.id, { position: { x: el.position.x, y: newY } });
-          }
-          repositioned.push({ ...el, position: { x: el.position.x, y: newY } });
-          currentY = newY + el.size.height;
-        } else {
-          repositioned.push(el);
-          currentY = el.position.y + el.size.height;
-        }
-      }
+        return { ...el, position: newPosition };
+      });
 
       return repositioned;
     });
@@ -2161,8 +2194,8 @@ export function WorkspaceEditor({
       className={`w-full flex flex-col relative ${isPopup ? 'flex-1' : 'h-full'}`}
       style={isPopup ? { minHeight: 0, overflow: 'hidden' } : undefined}
     >
-      {/* Title Bar - Show for Systems or when forceTitleBar is true (e.g., split view) */}
-      {!hideControls && (workspace?.isSystem || forceTitleBar) && (
+      {/* Title Bar - Show for Systems/Conventions or when forceTitleBar is true (e.g., split view) */}
+      {!hideControls && (workspace?.type !== 'user_defined' || forceTitleBar) && (
         <div className="bg-white border-b border-gray-200 px-8 py-3 flex-shrink-0 flex items-center gap-3">
           <div
             ref={workspaceNameRef}
@@ -2185,17 +2218,6 @@ export function WorkspaceEditor({
             }}
             data-placeholder="Enter workspace name..."
           />
-          {/* X button in title bar */}
-          {onClose && (
-            <Button
-              onClick={onClose}
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
         </div>
       )}
 
@@ -2346,7 +2368,7 @@ export function WorkspaceEditor({
                     initialShowName={tableElement.showName ?? true}
                     onRowsChange={(rows) => handleRowsChange(element.id, rows)}
                     onLevelWidthsChange={(levelWidths) => {
-                      elementOperations.update(element.id, { levelWidths } as Partial<DBWorkspaceElement>);
+                      safeUpdateElement(element.id, { levelWidths } as Partial<DBWorkspaceElement>);
                     }}
                     onMeaningWidthChange={(meaningWidth) => {
                       handleTableWidthChange(element.id, meaningWidth);
@@ -2356,11 +2378,11 @@ export function WorkspaceEditor({
                       handleElementNameChange(element.id, name);
                     }}
                     onShowNameChange={(showName) => {
-                      elementOperations.update(element.id, { showName } as Partial<DBWorkspaceElement>);
+                      safeUpdateElement(element.id, { showName } as Partial<DBWorkspaceElement>);
                     }}
                     onNameHtmlContentChange={(nameHtmlContent) => {
                       // HTML content changes are saved to current element (formatting doesn't trigger new element)
-                      elementOperations.update(element.id, { nameHtmlContent } as Partial<DBWorkspaceElement>);
+                      safeUpdateElement(element.id, { nameHtmlContent } as Partial<DBWorkspaceElement>);
                     }}
                     onCellFocusChange={(rowId, column, isFocused, applyFormatFn, applyHyperlinkFn, selectedText, removeHyperlinkFn, isHyperlinkSelected) => {
                       if (isFocused) {

@@ -13,6 +13,7 @@ import type {
   ImageData,
   PdfData,
   FileData,
+  WorkspaceType,
 } from './supabase-types';
 
 // Re-export types for compatibility with existing code
@@ -42,10 +43,13 @@ export interface Workspace {
   leftMargin?: number;
   topMargin?: number;
   partners?: Partner[];
-  isSystem: boolean; // true = top-level system (created via button), false = linked workspace (created via hyperlink)
+  type: WorkspaceType; // 'bidding_system' | 'bidding_convention' | 'user_defined'
+  parentWorkspaceId?: string; // For nested user_defined workspaces
+  descriptionHtml?: string; // HTML formatted description
   deletedAt?: number; // Timestamp when soft-deleted, undefined if not deleted
   backupGroupId?: string; // Groups all workspaces belonging to the same backup
   backupOf?: string; // References the original system workspace this backup was created from
+  slug?: string; // URL-friendly identifier
 }
 
 export interface BaseElement {
@@ -139,10 +143,13 @@ function workspaceFromRow(row: WorkspaceRow): Workspace {
     leftMargin: row.left_margin ?? undefined,
     topMargin: row.top_margin ?? undefined,
     partners: row.partners || undefined,
-    isSystem: row.is_system ?? true, // Default to true for backward compatibility
+    type: row.type,
+    parentWorkspaceId: row.parent_workspace_id || undefined,
+    descriptionHtml: row.description_html || undefined,
     deletedAt: row.deleted_at ? new Date(row.deleted_at).getTime() : undefined,
     backupGroupId: row.backup_group_id || undefined,
     backupOf: row.backup_of || undefined,
+    slug: row.slug || undefined,
   };
 }
 
@@ -312,9 +319,10 @@ export const workspaceOperations = {
   /**
    * Create a new workspace.
    * @param title - The title of the workspace
-   * @param isSystem - true for top-level systems (created via button), false for linked workspaces (created via hyperlink)
+   * @param type - 'bidding_system' | 'bidding_convention' | 'user_defined'
+   * @param parentWorkspaceId - Optional parent workspace for user_defined workspaces
    */
-  async create(title: string, isSystem: boolean = true): Promise<Workspace> {
+  async create(title: string, type: WorkspaceType = 'bidding_system', parentWorkspaceId?: string): Promise<Workspace> {
     const userId = await getCurrentUserId();
 
     const { data, error } = await supabase
@@ -327,7 +335,8 @@ export const workspaceOperations = {
         background_color: 'white',
         canvas_width: 794,
         canvas_height: 1123,
-        is_system: isSystem,
+        type,
+        parent_workspace_id: parentWorkspaceId || null,
       })
       .select()
       .single();
@@ -348,14 +357,14 @@ export const workspaceOperations = {
   },
 
   /**
-   * Get only top-level systems (created via "Create New System" button).
+   * Get only top-level bidding systems (created via "Create New System" button).
    * Used by OpenSystemDialog to show only systems, not linked workspaces.
    */
   async getSystems(): Promise<Workspace[]> {
     const { data, error } = await supabase
       .from('workspaces')
       .select('*')
-      .eq('is_system', true)
+      .eq('type', 'bidding_system')
       .is('deleted_at', null)
       .order('updated_at', { ascending: false });
 
@@ -371,7 +380,7 @@ export const workspaceOperations = {
     const { data, error } = await supabase
       .from('workspaces')
       .select('*')
-      .eq('is_system', true)
+      .eq('type', 'bidding_system')
       .not('deleted_at', 'is', null)
       .order('deleted_at', { ascending: false })
       .limit(3);
@@ -468,7 +477,7 @@ export const workspaceOperations = {
       .from('workspaces')
       .select('id, deleted_at')
       .eq('user_id', userId)
-      .eq('is_system', true)
+      .eq('type', 'bidding_system')
       .not('deleted_at', 'is', null)
       .order('deleted_at', { ascending: false });
 
@@ -777,5 +786,258 @@ export const imageOperations = {
   // Kept for compatibility but always returns empty array
   async getByElementId(_elementId: string): Promise<ImageBlob[]> {
     return [];
+  },
+};
+
+// =====================
+// BID RULES OPERATIONS
+// =====================
+
+export interface BidRule {
+  id: string;
+  elementId: string | null;
+  parentId: string | null;
+  bid: string;
+  bidHtmlContent: string | null;
+  bidFillColor: string | null;
+  meaning: string | null;
+  meaningHtmlContent: string | null;
+  auctionContext: string[];
+  sortOrder: number;
+  workspaceId: string | null;
+  collapsed: boolean;
+  isMerged: boolean;
+  auctionPath: string | null;
+  depth: number;
+  attributes: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RowData {
+  id: string;
+  bid: string;
+  bidHtmlContent?: string;
+  bidFillColor?: string;
+  meaning: string;
+  meaningHtmlContent?: string;
+  children: RowData[];
+  collapsed?: boolean;
+  isMerged?: boolean;
+}
+
+function bidRuleFromRow(row: any): BidRule {
+  return {
+    id: row.id,
+    elementId: row.element_id || null,
+    parentId: row.parent_id || null,
+    bid: row.bid,
+    bidHtmlContent: row.bid_html_content || null,
+    bidFillColor: row.bid_fill_color || null,
+    meaning: row.meaning || null,
+    meaningHtmlContent: row.meaning_html_content || null,
+    auctionContext: row.auction_context || [],
+    sortOrder: row.sort_order || 0,
+    workspaceId: row.workspace_id || null,
+    collapsed: row.collapsed || false,
+    isMerged: row.is_merged || false,
+    auctionPath: row.auction_path || null,
+    depth: row.depth || 0,
+    attributes: row.attributes || {},
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at).getTime(),
+  };
+}
+
+/**
+ * Convert flat bid_rules array to nested RowData tree
+ */
+function buildRowDataTree(rules: BidRule[]): RowData[] {
+  const ruleMap = new Map<string, BidRule & { children: RowData[] }>();
+  const rootRules: RowData[] = [];
+
+  // First pass: create map entries with empty children arrays
+  for (const rule of rules) {
+    ruleMap.set(rule.id, {
+      ...rule,
+      children: [],
+    });
+  }
+
+  // Second pass: build tree by linking children to parents
+  for (const rule of rules) {
+    const rowData: RowData = {
+      id: rule.id,
+      bid: rule.bid,
+      bidHtmlContent: rule.bidHtmlContent || undefined,
+      bidFillColor: rule.bidFillColor || undefined,
+      meaning: rule.meaning || '',
+      meaningHtmlContent: rule.meaningHtmlContent || undefined,
+      children: ruleMap.get(rule.id)!.children,
+      collapsed: rule.collapsed || false,
+      isMerged: rule.isMerged || false,
+    };
+
+    if (rule.parentId === null) {
+      rootRules.push(rowData);
+    } else {
+      const parent = ruleMap.get(rule.parentId);
+      if (parent) {
+        parent.children.push(rowData);
+      }
+    }
+  }
+
+  // Sort children by sortOrder at each level
+  const sortChildren = (rows: RowData[]) => {
+    rows.sort((a, b) => {
+      const ruleA = rules.find(r => r.id === a.id);
+      const ruleB = rules.find(r => r.id === b.id);
+      return (ruleA?.sortOrder || 0) - (ruleB?.sortOrder || 0);
+    });
+    for (const row of rows) {
+      sortChildren(row.children);
+    }
+  };
+  sortChildren(rootRules);
+
+  return rootRules;
+}
+
+export const bidRulesOperations = {
+  /**
+   * Get all bid rules for an element
+   */
+  async getByElementId(elementId: string): Promise<BidRule[]> {
+    const { data, error } = await supabase
+      .from('bid_rules')
+      .select('*')
+      .eq('element_id', elementId)
+      .order('depth', { ascending: true })
+      .order('sort_order', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map(bidRuleFromRow);
+  },
+
+  /**
+   * Get bid rules as a nested RowData tree (for SystemsTable rendering)
+   */
+  async getTreeByElementId(elementId: string): Promise<RowData[]> {
+    const rules = await this.getByElementId(elementId);
+    return buildRowDataTree(rules);
+  },
+
+  /**
+   * Create a new bid rule
+   */
+  async create(rule: Omit<BidRule, 'id' | 'createdAt' | 'updatedAt'>): Promise<BidRule> {
+    const { data, error } = await supabase
+      .from('bid_rules')
+      .insert({
+        element_id: rule.elementId,
+        parent_id: rule.parentId,
+        bid: rule.bid,
+        meaning: rule.meaning,
+        auction_context: rule.auctionContext,
+        sort_order: rule.sortOrder,
+        workspace_id: rule.workspaceId,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return bidRuleFromRow(data);
+  },
+
+  /**
+   * Update a bid rule
+   */
+  async update(id: string, updates: Partial<BidRule>): Promise<void> {
+    const dbUpdates: any = {};
+    if (updates.bid !== undefined) dbUpdates.bid = updates.bid;
+    if (updates.meaning !== undefined) dbUpdates.meaning = updates.meaning;
+    if (updates.parentId !== undefined) dbUpdates.parent_id = updates.parentId;
+    if (updates.auctionContext !== undefined) dbUpdates.auction_context = updates.auctionContext;
+    if (updates.sortOrder !== undefined) dbUpdates.sort_order = updates.sortOrder;
+    if (updates.workspaceId !== undefined) dbUpdates.workspace_id = updates.workspaceId;
+    if (updates.elementId !== undefined) dbUpdates.element_id = updates.elementId;
+
+    const { error } = await supabase
+      .from('bid_rules')
+      .update(dbUpdates)
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  /**
+   * Delete a bid rule
+   */
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('bid_rules')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  /**
+   * Delete all bid rules for an element
+   */
+  async deleteByElementId(elementId: string): Promise<void> {
+    const { error } = await supabase
+      .from('bid_rules')
+      .delete()
+      .eq('element_id', elementId);
+
+    if (error) throw error;
+  },
+
+  /**
+   * Replace entire tree for an element (delete all and re-insert)
+   * Converts nested RowData tree to flat bid_rules with parent_id
+   */
+  async replaceTree(elementId: string, rows: RowData[]): Promise<void> {
+    // Delete all existing rules
+    await this.deleteByElementId(elementId);
+
+    // Flatten tree to array of rules with parent_id
+    const flatRules: Array<{
+      id: string;
+      element_id: string;
+      parent_id: string | null;
+      bid: string;
+      meaning: string | null;
+      sort_order: number;
+    }> = [];
+
+    const flattenTree = (nodes: RowData[], parentId: string | null) => {
+      nodes.forEach((node, index) => {
+        flatRules.push({
+          id: node.id,
+          element_id: elementId,
+          parent_id: parentId,
+          bid: node.bid,
+          meaning: node.meaning || null,
+          sort_order: index,
+        });
+        if (node.children && node.children.length > 0) {
+          flattenTree(node.children, node.id);
+        }
+      });
+    };
+
+    flattenTree(rows, null);
+
+    // Insert all rules
+    if (flatRules.length > 0) {
+      const { error } = await supabase
+        .from('bid_rules')
+        .insert(flatRules);
+
+      if (error) throw error;
+    }
   },
 };
