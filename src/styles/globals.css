@@ -144,6 +144,21 @@
   outline: none;
 }
 
+/* Restore list styles inside contenteditable (stripped by Tailwind Preflight) */
+[contenteditable] ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+}
+
+[contenteditable] ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+}
+
+[contenteditable] li {
+  margin: 2px 0;
+}
+
 /**
  * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
  */

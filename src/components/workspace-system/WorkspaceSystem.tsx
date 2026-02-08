@@ -306,7 +306,7 @@ export function WorkspaceSystem() {
         showName: true,
         rows: [{ id: `r-${Date.now()}`, bid: '', meaning: '', children: [] }],
         levelWidths: { 0: 80 },
-        meaningWidth: 400,
+        width: 400,
       };
       setPages(prev => {
         const newMap = new Map(prev);
@@ -363,13 +363,13 @@ export function WorkspaceSystem() {
     });
   }, []);
 
-  const handlePasteTable = useCallback(async (workspaceId: string, rows: V2RowData[], name: string, options?: { meaningWidth?: number; levelWidths?: Record<number, number>; gridlines?: any; defaultRowHeight?: number }) => {
+  const handlePasteTable = useCallback(async (workspaceId: string, rows: V2RowData[], name: string, options?: { width?: number; levelWidths?: Record<number, number>; gridlines?: any; defaultRowHeight?: number }) => {
     const page = pages.get(workspaceId);
     const maxOrder = page ? Math.max(0, ...page.elements.map(el => el.order)) : 0;
     const maxY = (maxOrder + 1) * 100;
 
     const pastedLevelWidths = options?.levelWidths || { 0: 80 };
-    const pastedMeaningWidth = options?.meaningWidth || 400;
+    const pastedWidth = options?.width || 400;
 
     const v1Rows = convertRowsV2toV1(rows);
     const newElement: WorkspaceElement = {
@@ -381,7 +381,7 @@ export function WorkspaceSystem() {
       zIndex: maxOrder + 1,
       initialRows: v1Rows as any,
       levelWidths: pastedLevelWidths,
-      meaningWidth: pastedMeaningWidth,
+      meaningWidth: pastedWidth,
       showName: true,
       name: `${name} (copy)`,
       gridlines: options?.gridlines,
@@ -397,7 +397,7 @@ export function WorkspaceSystem() {
       showName: true,
       rows: JSON.parse(JSON.stringify(rows)),
       levelWidths: pastedLevelWidths,
-      meaningWidth: pastedMeaningWidth,
+      width: pastedWidth,
       gridlines: options?.gridlines,
       defaultRowHeight: options?.defaultRowHeight,
     };
@@ -672,8 +672,10 @@ export function WorkspaceSystem() {
   const availablePagesList = (() => {
     if (!currentSystemName) return getAvailablePages(workspaces as any);
     const filtered = workspaces.filter(ws => {
-      // Include the main system workspace itself
-      if (ws.title === currentSystemName) return true;
+      // Exclude backup workspaces
+      if (ws.backupOf || ws.backupGroupId) return false;
+      // Exclude the main system workspace (user is already on it)
+      if (ws.title === currentSystemName) return false;
       // Include chapters (workspaces with systemName_ prefix)
       if (ws.title.startsWith(currentSystemName + '_')) return true;
       // Include library conventions
@@ -707,10 +709,10 @@ export function WorkspaceSystem() {
 
   return (
     <WorkspaceContext.Provider value={contextValue}>
-      <div className="w-full h-screen bg-gray-100 flex items-start justify-start overflow-auto" style={{ padding: '16px 16px 16px 32px', gap: '0px' }}>
+      <div className="w-full h-screen bg-gray-100 flex items-start justify-start overflow-auto" style={{ padding: '16px 16px 16px 32px', gap: '5px' }}>
         {/* Main Page */}
         {activePage ? (
-          <div className="flex flex-col" style={{ height: pageHeight, maxHeight: pageHeight }}>
+          <div className="flex flex-col" style={{ height: pageHeight, maxHeight: pageHeight, flexShrink: 0 }}>
             <Page
               page={activePage}
               onPageChange={(updates) => handlePageChange(activeWorkspaceId!, updates)}
@@ -749,7 +751,7 @@ export function WorkspaceSystem() {
         {splitPages.map(({ id: wsId, page: splitPage }, index) => {
           if (!splitPage) return null;
           return (
-            <div key={wsId} className="flex flex-col" style={{ height: pageHeight, maxHeight: pageHeight }}>
+            <div key={wsId} className="flex flex-col" style={{ height: pageHeight, maxHeight: pageHeight, flexShrink: 0 }}>
               <Page
                 page={splitPage}
                 onPageChange={(updates) => handlePageChange(wsId, updates)}

@@ -1894,6 +1894,20 @@
   outline: none;
 }
 
+[contenteditable] ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+}
+
+[contenteditable] ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+}
+
+[contenteditable] li {
+  margin: 2px 0;
+}
+
 html {
   font-size: var(--font-size);
 }
