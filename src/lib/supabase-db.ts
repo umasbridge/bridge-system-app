@@ -42,6 +42,7 @@ export interface Workspace {
   canvasHeight?: number;
   leftMargin?: number;
   topMargin?: number;
+  elementSpacing?: number;
   partners?: Partner[];
   type: WorkspaceType; // 'bidding_system' | 'bidding_convention' | 'user_defined'
   parentWorkspaceId?: string; // For nested user_defined workspaces
@@ -79,6 +80,7 @@ export interface SystemsTableElement extends BaseElement {
   meaningWidth?: number;
   showName?: boolean;
   nameHtmlContent?: string;
+  defaultRowHeight?: number;
 }
 
 export interface TextElement extends BaseElement {
@@ -142,6 +144,7 @@ function workspaceFromRow(row: WorkspaceRow): Workspace {
     canvasHeight: row.canvas_height || undefined,
     leftMargin: row.left_margin ?? undefined,
     topMargin: row.top_margin ?? undefined,
+    elementSpacing: row.element_spacing ?? undefined,
     partners: row.partners || undefined,
     type: row.type,
     parentWorkspaceId: row.parent_workspace_id || undefined,
@@ -436,6 +439,7 @@ export const workspaceOperations = {
     if (updates.canvasHeight !== undefined) dbUpdates.canvas_height = updates.canvasHeight;
     if (updates.leftMargin !== undefined) dbUpdates.left_margin = updates.leftMargin;
     if (updates.topMargin !== undefined) dbUpdates.top_margin = updates.topMargin;
+    if (updates.elementSpacing !== undefined) dbUpdates.element_spacing = updates.elementSpacing;
     if (updates.partners !== undefined) dbUpdates.partners = updates.partners;
 
     const { error } = await supabase
