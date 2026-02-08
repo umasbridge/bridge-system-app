@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Resizable } from 're-resizable';
 import { Undo } from 'lucide-react';
 import { BidTableRow } from './BidTableRow';
 import { BidTableNameHeader } from './BidTableNameHeader';
@@ -529,13 +530,45 @@ export function BidTable({
   const level0ActualMeaningWidth = Math.max(20, meaningWidth - level0BidWidth);
   const totalTableWidth = level0BidWidth + level0ActualMeaningWidth;
 
+  const resizeEnabled = !isViewMode && isSelected;
+
   return (
-    <div
-      className="inline-block relative"
+    <Resizable
+      size={{ width: totalTableWidth, height: 'auto' }}
+      minWidth={level0BidWidth + 40}
+      maxWidth={maxWidth}
+      enable={{
+        right: resizeEnabled,
+        top: false,
+        bottom: false,
+        left: false,
+        topRight: false,
+        bottomRight: false,
+        bottomLeft: false,
+        topLeft: false,
+      }}
+      onResizeStop={(_e, _direction, _ref, d) => {
+        const newTotal = totalTableWidth + d.width;
+        // meaningWidth = totalTableWidth at level 0 (bidWidth + actualMeaning = bidWidth + (meaningWidth - bidWidth))
+        // So meaningWidth ≈ totalTableWidth when meaningWidth > bidWidth + 20
+        const newMeaningWidth = Math.max(level0BidWidth + 40, meaningWidth + d.width);
+        updateMeaningWidth(maxWidth ? Math.min(newMeaningWidth, maxWidth) : newMeaningWidth);
+      }}
+      handleStyles={{
+        right: {
+          width: '6px',
+          right: '-3px',
+          cursor: 'col-resize',
+        },
+      }}
+      handleClasses={{
+        right: resizeEnabled ? 'hover:bg-blue-400 rounded' : '',
+      }}
       style={{
+        display: 'inline-block',
         ...(isSelected ? { boxShadow: '0 0 0 2px white, 0 0 0 4px #3b82f6', borderRadius: '4px' } : {}),
       }}
-      onClick={(e) => {
+      onClick={(e: React.MouseEvent) => {
         if (!onSelect) return;
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -620,6 +653,6 @@ export function BidTable({
           </button>
         </div>
       )}
-    </div>
+    </Resizable>
   );
 }

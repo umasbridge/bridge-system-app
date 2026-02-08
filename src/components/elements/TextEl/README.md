@@ -64,11 +64,20 @@ interface TextElProps {
 }
 ```
 
+## Self-Contained Features
+
+- **Resize** — element-level width resize via drag handle on right edge (default mode). Uses `re-resizable`. Controlled by `width`/`maxWidth`/`onWidthChange` props. Only active when `isSelected=true` and `readOnly=false`.
+- **Selection** — blue ring (boxShadow) when `isSelected=true`. Parent sets via `onSelect` callback.
+- **Formatting** — inline toolbar (bold/italic/underline/strikethrough/font/color/highlight) + block bar (alignment/lists). Built into useRichText hook.
+- **Hyperlinks** — create/click hyperlinks to navigate between pages. Built into HyperlinkMenu + useRichText.
+- **Undo/Redo** — Ctrl+Z / Ctrl+Shift+Z. Built into useRichText via `@/utils/rte/history`.
+- **Paste sanitization** — cleans HTML from Google Docs/Word. Built into useRichText via `@/utils/rte/pasteSanitizer`.
+
 ## External Dependencies
 
 ### NPM packages
 - `react` (^18.3.1) — hooks, JSX
-- `re-resizable` — width drag handle (default mode only)
+- `re-resizable` — element width resize handle (default mode only)
 - `lucide-react` — toolbar icons
 
 ### App dependencies (must be provided or replaced)

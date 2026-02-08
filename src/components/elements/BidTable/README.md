@@ -82,6 +82,15 @@ interface RowData {
 }
 ```
 
+## Self-Contained Features
+
+- **Resize** — element-level width resize via drag handle on right edge. Uses `re-resizable`. Dragging adjusts `meaningWidth` which controls total table width. Only active when `isSelected=true` and `isViewMode=false`. Internal column resize handles also available for bid/meaning column proportion.
+- **Selection** — blue ring (boxShadow) when `isSelected=true`. Border-click detection (6px edge zone) triggers `onSelect()`.
+- **Row operations** — add/delete/copy/paste rows with undo. Keyboard shortcuts + hover menu.
+- **Column resize** — bid column width per nesting level (`levelWidths`), meaning column width (`meaningWidth`). Both via internal re-resizable handles.
+- **Color fills** — per-cell background color via ColorPicker popup.
+- **Hyperlinks** — click-through navigation in bid/meaning cells (delegated to TextEl).
+
 ## Features
 
 ### Row operations (hover menu on meaning cell bottom border)
@@ -116,7 +125,7 @@ interface RowData {
 ### NPM packages
 - `react` (^18.3.1) — hooks, JSX
 - `react-dom` — `createPortal` for color picker popup
-- `re-resizable` — column drag resize
+- `re-resizable` — element-level width resize (BidTable.tsx) + column resize (BidTableRow.tsx)
 - `lucide-react` — icons (Undo, X)
 
 ### Internal module dependencies
