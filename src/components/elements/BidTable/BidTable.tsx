@@ -525,10 +525,11 @@ export function BidTable({
     onRowsChange?.(updatedRows);
   };
 
-  // Calculate total table width
+  // Calculate total table width (content + right border)
   const level0BidWidth = levelWidths[0] || 80;
   const level0ActualMeaningWidth = Math.max(20, meaningWidth - level0BidWidth);
-  const totalTableWidth = level0BidWidth + level0ActualMeaningWidth;
+  const borderWidth = gridlines?.enabled ? gridlines.width : 1;
+  const totalTableWidth = level0BidWidth + level0ActualMeaningWidth + borderWidth;
 
   const resizeEnabled = !isViewMode && isSelected;
 
