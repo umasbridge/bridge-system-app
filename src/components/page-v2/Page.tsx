@@ -35,7 +35,7 @@ interface PageProps {
   onAddElement?: (type: 'text' | 'bidtable') => void;
   onDeleteElement?: (elementId: string) => void;
   onMoveElement?: (elementId: string, direction: 'up' | 'down') => void;
-  onPasteTable?: (rows: RowData[], name: string) => void;
+  onPasteTable?: (rows: RowData[], name: string, options?: { meaningWidth?: number; levelWidths?: Record<number, number>; gridlines?: any; defaultRowHeight?: number }) => void;
   isViewMode?: boolean;
   onSwitchToEditMode?: () => void;
   onSwitchToViewMode?: () => void;
@@ -74,7 +74,7 @@ export function Page({
   parentSideMargin,
 }: PageProps) {
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const [copiedTable, setCopiedTable] = useState<{ rows: RowData[]; name: string } | null>(null);
+  const [copiedTable, setCopiedTable] = useState<{ rows: RowData[]; name: string; meaningWidth?: number; levelWidths?: Record<number, number>; gridlines?: any; defaultRowHeight?: number } | null>(null);
   const [pageFormatPosition, setPageFormatPosition] = useState<{ x: number; y: number } | null>(null);
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   const [showBorderColorPicker, setShowBorderColorPicker] = useState(false);
@@ -175,7 +175,12 @@ export function Page({
   // Handle paste table
   const handlePasteTable = useCallback(() => {
     if (copiedTable && onPasteTable) {
-      onPasteTable(copiedTable.rows, copiedTable.name);
+      onPasteTable(copiedTable.rows, copiedTable.name, {
+        meaningWidth: copiedTable.meaningWidth,
+        levelWidths: copiedTable.levelWidths,
+        gridlines: copiedTable.gridlines,
+        defaultRowHeight: copiedTable.defaultRowHeight,
+      });
     }
   }, [copiedTable, onPasteTable]);
 
@@ -185,7 +190,11 @@ export function Page({
       const tableEl = element as BidTableElement;
       const tableCopy = {
         rows: JSON.parse(JSON.stringify(tableEl.rows)),
-        name: tableEl.name || 'Copied Table'
+        name: tableEl.name || 'Copied Table',
+        meaningWidth: tableEl.meaningWidth,
+        levelWidths: tableEl.levelWidths,
+        gridlines: tableEl.gridlines,
+        defaultRowHeight: tableEl.defaultRowHeight,
       };
       sessionStorage.setItem('copiedBidTable', JSON.stringify(tableCopy));
     }

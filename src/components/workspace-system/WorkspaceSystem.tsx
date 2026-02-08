@@ -363,10 +363,13 @@ export function WorkspaceSystem() {
     });
   }, []);
 
-  const handlePasteTable = useCallback(async (workspaceId: string, rows: V2RowData[], name: string) => {
+  const handlePasteTable = useCallback(async (workspaceId: string, rows: V2RowData[], name: string, options?: { meaningWidth?: number; levelWidths?: Record<number, number>; gridlines?: any; defaultRowHeight?: number }) => {
     const page = pages.get(workspaceId);
     const maxOrder = page ? Math.max(0, ...page.elements.map(el => el.order)) : 0;
     const maxY = (maxOrder + 1) * 100;
+
+    const pastedLevelWidths = options?.levelWidths || { 0: 80 };
+    const pastedMeaningWidth = options?.meaningWidth || 400;
 
     const v1Rows = convertRowsV2toV1(rows);
     const newElement: WorkspaceElement = {
@@ -377,10 +380,12 @@ export function WorkspaceSystem() {
       size: { width: 400, height: 100 },
       zIndex: maxOrder + 1,
       initialRows: v1Rows as any,
-      levelWidths: { 0: 80 },
-      meaningWidth: 400,
+      levelWidths: pastedLevelWidths,
+      meaningWidth: pastedMeaningWidth,
       showName: true,
       name: `${name} (copy)`,
+      gridlines: options?.gridlines,
+      defaultRowHeight: options?.defaultRowHeight,
     } as any;
     await elementOperations.create(newElement);
 
@@ -391,8 +396,10 @@ export function WorkspaceSystem() {
       name: `${name} (copy)`,
       showName: true,
       rows: JSON.parse(JSON.stringify(rows)),
-      levelWidths: { 0: 80 },
-      meaningWidth: 400,
+      levelWidths: pastedLevelWidths,
+      meaningWidth: pastedMeaningWidth,
+      gridlines: options?.gridlines,
+      defaultRowHeight: options?.defaultRowHeight,
     };
     setPages(prev => {
       const newMap = new Map(prev);
@@ -711,7 +718,7 @@ export function WorkspaceSystem() {
               onAddElement={(type) => handleAddElement(activeWorkspaceId!, type)}
               onDeleteElement={(elementId) => handleDeleteElement(activeWorkspaceId!, elementId)}
               onMoveElement={(elementId, direction) => handleMoveElement(activeWorkspaceId!, elementId, direction)}
-              onPasteTable={(rows, name) => handlePasteTable(activeWorkspaceId!, rows, name)}
+              onPasteTable={(rows, name, opts) => handlePasteTable(activeWorkspaceId!, rows, name, opts)}
               isViewMode={isViewMode}
               onSwitchToEditMode={handleSwitchToEditMode}
               onSwitchToViewMode={handleSwitchToViewMode}
@@ -750,7 +757,7 @@ export function WorkspaceSystem() {
                 onAddElement={(type) => handleAddElement(wsId, type)}
                 onDeleteElement={(elementId) => handleDeleteElement(wsId, elementId)}
                 onMoveElement={(elementId, direction) => handleMoveElement(wsId, elementId, direction)}
-                onPasteTable={(rows, name) => handlePasteTable(wsId, rows, name)}
+                onPasteTable={(rows, name, opts) => handlePasteTable(wsId, rows, name, opts)}
                 isViewMode={isViewMode}
                 onExit={() => {
                   // Close this split and everything after it
@@ -783,7 +790,7 @@ export function WorkspaceSystem() {
                 onAddElement={(type) => handleAddElement(popup.workspaceId, type)}
                 onDeleteElement={(elementId) => handleDeleteElement(popup.workspaceId, elementId)}
                 onMoveElement={(elementId, direction) => handleMoveElement(popup.workspaceId, elementId, direction)}
-                onPasteTable={(rows, name) => handlePasteTable(popup.workspaceId, rows, name)}
+                onPasteTable={(rows, name, opts) => handlePasteTable(popup.workspaceId, rows, name, opts)}
                 isViewMode={isViewMode}
                 onExit={() => {
                   // Close this popup and all children after it
