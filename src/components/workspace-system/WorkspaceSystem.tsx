@@ -713,6 +713,17 @@ export function WorkspaceSystem() {
         {/* Main Page */}
         {activePage ? (
           <div className="flex flex-col" style={{ height: pageHeight, maxHeight: pageHeight, flexShrink: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
+              {isViewMode ? (
+                <Button onClick={handleSwitchToEditMode} variant="outline" size="sm">
+                  Edit
+                </Button>
+              ) : (
+                <Button onClick={handleSwitchToViewMode} variant="outline" size="sm">
+                  Save
+                </Button>
+              )}
+            </div>
             <Page
               page={activePage}
               onPageChange={(updates) => handlePageChange(activeWorkspaceId!, updates)}
