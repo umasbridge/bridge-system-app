@@ -722,9 +722,6 @@ export function WorkspaceSystem() {
               onMoveElement={(elementId, direction) => handleMoveElement(activeWorkspaceId!, elementId, direction)}
               onPasteTable={(rows, name, opts) => handlePasteTable(activeWorkspaceId!, rows, name, opts)}
               isViewMode={isViewMode}
-              onSwitchToEditMode={handleSwitchToEditMode}
-              onSwitchToViewMode={handleSwitchToViewMode}
-              onShare={() => setShowShareDialog(true)}
               onExit={() => handleCloseWorkspace(activeWorkspaceId!)}
               availablePages={availablePagesList}
               onHyperlinkClick={(target) => handleHyperlinkClick(target, { type: 'main' })}

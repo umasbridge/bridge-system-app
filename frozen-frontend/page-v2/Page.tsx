@@ -37,9 +37,6 @@ interface PageProps {
   onMoveElement?: (elementId: string, direction: 'up' | 'down') => void;
   onPasteTable?: (rows: RowData[], name: string, options?: { width?: number; levelWidths?: Record<number, number>; gridlines?: any; defaultRowHeight?: number }) => void;
   isViewMode?: boolean;
-  onSwitchToEditMode?: () => void;
-  onSwitchToViewMode?: () => void;
-  onShare?: () => void;
   onExit?: () => void;
   availablePages?: Array<{ id: string; name: string }>;
   onHyperlinkClick?: (target: HyperlinkTarget) => void;
@@ -64,9 +61,6 @@ export function Page({
   onMoveElement,
   onPasteTable,
   isViewMode = false,
-  onSwitchToEditMode,
-  onSwitchToViewMode,
-  onShare,
   onExit,
   availablePages = [],
   onHyperlinkClick,
@@ -598,93 +592,68 @@ export function Page({
         </div>
       </div>
 
-      {/* Bottom Button Bar — callback-presence-driven */}
+      {/* Bottom Button Bar — Insert + Paste (document editing operations only) */}
       {(() => {
         const showInsert = !isViewMode && !!onAddElement;
         const showPaste = !isViewMode && !!copiedTable && !!onPasteTable;
-        const showShareSave = !!onShare || !!onSwitchToViewMode || !!onSwitchToEditMode;
-        if (!showInsert && !showPaste && !showShareSave) return null;
+        if (!showInsert && !showPaste) return null;
 
         return (
           <div style={{ background: 'white', borderTop: '1px solid #e5e7eb', flexShrink: 0, padding: `12px ${leftMargin}px` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              {/* Left: Insert + Paste */}
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                {showInsert && (
-                  <div style={{ position: 'relative' }}>
-                    <Button
-                      onClick={() => setShowInsertMenu(prev => !prev)}
-                      variant="outline"
-                    >
-                      Insert
-                    </Button>
-                    {showInsertMenu && (
-                      <div
-                        data-insert-menu
-                        style={{
-                          position: 'absolute',
-                          bottom: '100%',
-                          left: 0,
-                          marginBottom: '4px',
-                          background: 'white',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                          zIndex: 30,
-                          minWidth: '120px',
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <button
-                          onClick={() => { onAddElement!('bidtable'); setShowInsertMenu(false); }}
-                          style={{ display: 'block', width: '100%', padding: '8px 12px', fontSize: '14px', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          Table
-                        </button>
-                        <button
-                          onClick={() => { onAddElement!('text'); setShowInsertMenu(false); }}
-                          style={{ display: 'block', width: '100%', padding: '8px 12px', fontSize: '14px', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          Text
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {showPaste && (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {showInsert && (
+                <div style={{ position: 'relative' }}>
                   <Button
-                    onClick={handlePasteTable}
+                    onClick={() => setShowInsertMenu(prev => !prev)}
                     variant="outline"
-                    style={{ borderColor: '#22c55e', color: '#15803d' }}
                   >
-                    Paste
+                    Insert
                   </Button>
-                )}
-              </div>
-
-              {/* Right: Share + Save/Edit (only when callbacks provided) */}
-              {showShareSave && (
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {onShare && (
-                    <Button onClick={onShare} variant="outline">
-                      Share
-                    </Button>
-                  )}
-                  {isViewMode && onSwitchToEditMode && (
-                    <Button onClick={onSwitchToEditMode} variant="default">
-                      Edit
-                    </Button>
-                  )}
-                  {!isViewMode && onSwitchToViewMode && (
-                    <Button onClick={onSwitchToViewMode} variant="default">
-                      Save
-                    </Button>
+                  {showInsertMenu && (
+                    <div
+                      data-insert-menu
+                      style={{
+                        position: 'absolute',
+                        bottom: '100%',
+                        left: 0,
+                        marginBottom: '4px',
+                        background: 'white',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                        zIndex: 30,
+                        minWidth: '120px',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <button
+                        onClick={() => { onAddElement!('bidtable'); setShowInsertMenu(false); }}
+                        style={{ display: 'block', width: '100%', padding: '8px 12px', fontSize: '14px', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        Table
+                      </button>
+                      <button
+                        onClick={() => { onAddElement!('text'); setShowInsertMenu(false); }}
+                        style={{ display: 'block', width: '100%', padding: '8px 12px', fontSize: '14px', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        Text
+                      </button>
+                    </div>
                   )}
                 </div>
+              )}
+              {showPaste && (
+                <Button
+                  onClick={handlePasteTable}
+                  variant="outline"
+                  style={{ borderColor: '#22c55e', color: '#15803d' }}
+                >
+                  Paste
+                </Button>
               )}
             </div>
           </div>
