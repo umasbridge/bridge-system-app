@@ -713,21 +713,6 @@ export function WorkspaceSystem() {
         {/* Main Page */}
         {activePage ? (
           <div className="flex flex-col" style={{ height: pageHeight, maxHeight: pageHeight, flexShrink: 0 }}>
-            {/* App-level toolbar: Edit/View toggle + Share */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '4px', marginBottom: '4px' }}>
-              {isViewMode ? (
-                <Button onClick={handleSwitchToEditMode} variant="outline" size="sm">
-                  Edit
-                </Button>
-              ) : (
-                <Button onClick={handleSwitchToViewMode} variant="outline" size="sm">
-                  Save
-                </Button>
-              )}
-              <Button onClick={() => setShowShareDialog(true)} variant="outline" size="sm">
-                Share
-              </Button>
-            </div>
             <Page
               page={activePage}
               onPageChange={(updates) => handlePageChange(activeWorkspaceId!, updates)}
@@ -737,7 +722,12 @@ export function WorkspaceSystem() {
               onMoveElement={(elementId, direction) => handleMoveElement(activeWorkspaceId!, elementId, direction)}
               onPasteTable={(rows, name, opts) => handlePasteTable(activeWorkspaceId!, rows, name, opts)}
               isViewMode={isViewMode}
-              onExit={() => handleCloseWorkspace(activeWorkspaceId!)}
+              onExit={(shouldSave) => {
+                if (shouldSave) {
+                  // Changes already auto-saved to Supabase — just exit
+                }
+                handleCloseWorkspace(activeWorkspaceId!);
+              }}
               availablePages={availablePagesList}
               onHyperlinkClick={(target) => handleHyperlinkClick(target, { type: 'main' })}
               embedded={true}

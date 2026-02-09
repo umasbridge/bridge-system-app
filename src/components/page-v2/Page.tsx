@@ -37,7 +37,7 @@ interface PageProps {
   onMoveElement?: (elementId: string, direction: 'up' | 'down') => void;
   onPasteTable?: (rows: RowData[], name: string, options?: { width?: number; levelWidths?: Record<number, number>; gridlines?: any; defaultRowHeight?: number }) => void;
   isViewMode?: boolean;
-  onExit?: () => void;
+  onExit?: (shouldSave: boolean) => void;
   availablePages?: Array<{ id: string; name: string }>;
   onHyperlinkClick?: (target: HyperlinkTarget) => void;
   embedded?: boolean; // When true, uses 100% width instead of fixed A4 width
@@ -74,7 +74,24 @@ export function Page({
   const [showBorderColorPicker, setShowBorderColorPicker] = useState(false);
   const [showFillColorPicker, setShowFillColorPicker] = useState(false);
   const [showGridlineColorPicker, setShowGridlineColorPicker] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [showExitDialog, setShowExitDialog] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Wrap onPageChange to track dirty state
+  const handlePageChange = useCallback((updates: Partial<PageType>) => {
+    setIsDirty(true);
+    onPageChange?.(updates);
+  }, [onPageChange]);
+
+  // Handle Exit button click
+  const handleExitClick = useCallback(() => {
+    if (!isViewMode && isDirty) {
+      setShowExitDialog(true);
+    } else {
+      onExit?.(false);
+    }
+  }, [isViewMode, isDirty, onExit]);
 
   // Reset color pickers when selection changes
   useEffect(() => {
@@ -224,6 +241,7 @@ export function Page({
 
   // Handle element updates
   const handleElementUpdate = useCallback((elementId: string, updates: Partial<Element>) => {
+    setIsDirty(true);
     onElementChange?.(elementId, updates);
   }, [onElementChange]);
 
@@ -531,28 +549,17 @@ export function Page({
         <TitleBar
           title={page.title}
           titleHtml={page.titleHtml}
-          onChange={(title, titleHtml) => onPageChange?.({ title, titleHtml })}
+          onChange={(title, titleHtml) => handlePageChange({ title, titleHtml })}
           readOnly={isViewMode}
           isSelected={selectedElementId === TITLE_ID}
           onSelect={() => setSelectedElementId(TITLE_ID)}
           onFocus={() => setSelectedElementId(null)}
           width={page.titleWidth}
           maxWidth={MAX_CONTENT_WIDTH}
-          onWidthChange={(w) => onPageChange?.({ titleWidth: w })}
+          onWidthChange={(w) => handlePageChange({ titleWidth: w })}
           paddingLeft={leftMargin}
           paddingRight={rightMargin}
         />
-        {onExit && (
-          <button
-            onClick={onExit}
-            style={{ position: 'absolute', top: '2px', right: '8px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', color: '#6b7280', borderRadius: '4px', border: 'none', background: 'transparent', cursor: 'pointer', zIndex: 5 }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = '#e5e7eb'; e.currentTarget.style.color = '#374151'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#6b7280'; }}
-            title={isMainSystem ? 'Exit to dashboard' : 'Close'}
-          >
-            ×
-          </button>
-        )}
       </div>
 
       {/* Description Bar - for main system pages (always visible, outside content border) */}
@@ -560,7 +567,7 @@ export function Page({
         <DescBar
           description={page.description || ''}
           descriptionHtml={page.descriptionHtml}
-          onChange={(description, descriptionHtml) => onPageChange?.({ description, descriptionHtml })}
+          onChange={(description, descriptionHtml) => handlePageChange({ description, descriptionHtml })}
           readOnly={isViewMode}
           onFocus={() => setSelectedElementId(null)}
         />
@@ -592,79 +599,126 @@ export function Page({
         </div>
       </div>
 
-      {/* Bottom Button Bar — Insert + Paste (document editing operations only) */}
-      {(() => {
-        const showInsert = !isViewMode && !!onAddElement;
-        const showPaste = !isViewMode && !!copiedTable && !!onPasteTable;
-        if (!showInsert && !showPaste) return null;
-
-        return (
-          <div style={{ background: 'white', borderTop: '1px solid #e5e7eb', flexShrink: 0, padding: `12px ${leftMargin}px` }}>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              {showInsert && (
-                <div style={{ position: 'relative' }}>
-                  <Button
-                    onClick={() => setShowInsertMenu(prev => !prev)}
-                    variant="outline"
-                  >
-                    Insert
-                  </Button>
-                  {showInsertMenu && (
-                    <div
-                      data-insert-menu
-                      style={{
-                        position: 'absolute',
-                        bottom: '100%',
-                        left: 0,
-                        marginBottom: '4px',
-                        background: 'white',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                        zIndex: 30,
-                        minWidth: '120px',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <button
-                        onClick={() => { onAddElement!('bidtable'); setShowInsertMenu(false); }}
-                        style={{ display: 'block', width: '100%', padding: '8px 12px', fontSize: '14px', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                      >
-                        Table
-                      </button>
-                      <button
-                        onClick={() => { onAddElement!('text'); setShowInsertMenu(false); }}
-                        style={{ display: 'block', width: '100%', padding: '8px 12px', fontSize: '14px', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                      >
-                        Text
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              {showPaste && (
+      {/* Bottom Button Bar — Insert + Paste + Exit */}
+      <div style={{ background: 'white', borderTop: '1px solid #e5e7eb', flexShrink: 0, padding: `12px ${leftMargin}px` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {/* Left: Insert + Paste */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {!isViewMode && onAddElement && (
+              <div style={{ position: 'relative' }}>
                 <Button
-                  onClick={handlePasteTable}
+                  onClick={() => setShowInsertMenu(prev => !prev)}
                   variant="outline"
-                  style={{ borderColor: '#22c55e', color: '#15803d' }}
                 >
-                  Paste
+                  Insert
                 </Button>
-              )}
+                {showInsertMenu && (
+                  <div
+                    data-insert-menu
+                    style={{
+                      position: 'absolute',
+                      bottom: '100%',
+                      left: 0,
+                      marginBottom: '4px',
+                      background: 'white',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                      zIndex: 30,
+                      minWidth: '120px',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <button
+                      onClick={() => { onAddElement('bidtable'); setShowInsertMenu(false); }}
+                      style={{ display: 'block', width: '100%', padding: '8px 12px', fontSize: '14px', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      Table
+                    </button>
+                    <button
+                      onClick={() => { onAddElement('text'); setShowInsertMenu(false); }}
+                      style={{ display: 'block', width: '100%', padding: '8px 12px', fontSize: '14px', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      Text
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {!isViewMode && copiedTable && onPasteTable && (
+              <Button
+                onClick={handlePasteTable}
+                variant="outline"
+                style={{ borderColor: '#22c55e', color: '#15803d' }}
+              >
+                Paste
+              </Button>
+            )}
+          </div>
+
+          {/* Right: Exit */}
+          {onExit && (
+            <Button onClick={handleExitClick} variant="outline">
+              Exit
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Exit Confirmation Dialog */}
+      {showExitDialog && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+          }}
+          onClick={() => setShowExitDialog(false)}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '8px',
+              padding: '24px',
+              minWidth: '300px',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p style={{ fontSize: '15px', color: '#374151', marginBottom: '20px' }}>
+              You have unsaved changes.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <Button
+                variant="outline"
+                onClick={() => { setShowExitDialog(false); onExit?.(false); }}
+              >
+                Discard changes
+              </Button>
+              <Button
+                variant="default"
+                onClick={() => { setShowExitDialog(false); onExit?.(true); }}
+              >
+                Save changes
+              </Button>
             </div>
           </div>
-        );
-      })()}
+        </div>
+      )}
 
       {/* Page Format Panel */}
       {pageFormatPosition && !isViewMode && onPageChange && (
         <PageFormatPanel
           page={page}
-          onUpdate={(updates) => onPageChange(updates)}
+          onUpdate={(updates) => handlePageChange(updates)}
           onClose={() => setPageFormatPosition(null)}
           position={pageFormatPosition}
         />
