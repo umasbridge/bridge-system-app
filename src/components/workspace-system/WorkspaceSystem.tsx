@@ -724,9 +724,13 @@ export function WorkspaceSystem() {
               isViewMode={isViewMode}
               onExit={(shouldSave) => {
                 if (shouldSave) {
-                  // Changes already auto-saved to Supabase — just exit
+                  // Changes already auto-saved to Supabase via onChange callbacks
+                  // Optionally create a backup before closing
+                  handleBackupAndClose();
+                } else {
+                  // Discard or no changes — just close, skip backup dialog
+                  handleCloseWithoutBackup();
                 }
-                handleCloseWorkspace(activeWorkspaceId!);
               }}
               availablePages={availablePagesList}
               onHyperlinkClick={(target) => handleHyperlinkClick(target, { type: 'main' })}

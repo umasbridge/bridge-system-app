@@ -663,7 +663,7 @@ export function Page({
           {/* Right: Exit */}
           {onExit && (
             <Button onClick={handleExitClick} variant="outline">
-              Exit
+              Close
             </Button>
           )}
         </div>
